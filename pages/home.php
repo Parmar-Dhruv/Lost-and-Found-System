@@ -1,6 +1,5 @@
 <?php
 require_once __DIR__ . '/../config/init.php';
-define('BASE_URL', '/lost-and-found/');
 
 $pageTitle = 'Home';
 $db = getDB();

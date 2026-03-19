@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS `users` (
 
 -- --------------------------------------------------------
 -- Seed default admin account
--- Password is: Admin@1234
+-- Password: Admin@1234 (bcrypt hashed)
 -- --------------------------------------------------------
 INSERT INTO `users` (`full_name`, `email`, `password`, `role`, `is_verified`) VALUES
-('Administrator', 'admin@lostandfound.com', '$2y$12$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin', 1);
+('Administrator', 'admin@lostandfound.com', '$2y$10$UDeOSAKr7DFNqBkVpwi7OurXWVhN0x99ZbW3MAL9RItrObBaHxyOG', 'admin', 1);
 
 -- --------------------------------------------------------
 -- TABLE: items
