@@ -433,3 +433,20 @@ footer {
     font-size: 14px;
     color: #555;
 }
+
+/* ── SORTABLE TABLE HEADERS ─────────────────────────────────────────────────── */
+
+/* Sort links inside <thead> <th> cells */
+/* They inherit the white header background so they look like plain header text */
+/* Only the cursor and arrow indicate they are clickable */
+.sort-link {
+    color: #fff;
+    text-decoration: none;
+    display: inline-block;
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.sort-link:hover {
+    color: #e94560;
+}

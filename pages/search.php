@@ -10,7 +10,32 @@ $status   = trim($_GET['status']    ?? '');
 $dateFrom = trim($_GET['date_from'] ?? '');
 $dateTo   = trim($_GET['date_to']   ?? '');
 
-// --- WHITELIST VALIDATION ---
+// --- COLLECT SORT INPUTS ---
+$sortCol = trim($_GET['sort_col'] ?? 'created_at');
+$sortDir = trim($_GET['sort_dir'] ?? 'desc');
+
+// Whitelist sort column — NEVER interpolate raw user input into ORDER BY
+// Only these exact strings are allowed. Anything else falls back to created_at.
+$allowedSortCols = [
+    'item_name'     => 'i.item_name',
+    'category'      => 'i.category',
+    'status'        => 'i.status',
+    'location'      => 'i.location',
+    'reporter_name' => 'u.full_name',
+    'date_reported' => 'i.date_reported',
+    'created_at'    => 'i.created_at',
+];
+
+// Whitelist sort direction — only asc or desc, nothing else
+$allowedSortDirs = ['asc', 'desc'];
+
+if (!array_key_exists($sortCol, $allowedSortCols)) $sortCol = 'created_at';
+if (!in_array($sortDir, $allowedSortDirs))         $sortDir = 'desc';
+
+// Resolve to the actual SQL column expression (e.g. 'i.item_name')
+$orderByCol = $allowedSortCols[$sortCol];
+
+// --- WHITELIST FILTER VALIDATION ---
 $allowedCategories = ['Electronics', 'Clothing', 'Documents', 'Accessories', 'Other'];
 $allowedStatuses   = ['lost', 'found', 'claimed', 'expired'];
 
@@ -78,15 +103,14 @@ if ($searchSubmitted) {
 $results = [];
 
 if ($searchSubmitted) {
-    // We need to append LIMIT and OFFSET to the params array
-    // But we use bindValue for those so they are typed as integers
+    // ORDER BY uses whitelisted $orderByCol and $sortDir — never raw user input
     $sql = "
         SELECT i.item_id, i.item_name, i.category, i.status,
                i.location, i.date_reported, u.full_name AS reporter_name
         FROM items i
         JOIN users u ON i.user_id = u.user_id
         WHERE $whereClause
-        ORDER BY i.created_at DESC
+        ORDER BY $orderByCol $sortDir
         LIMIT ? OFFSET ?
     ";
 
@@ -106,20 +130,39 @@ if ($searchSubmitted) {
 }
 
 // --- BUILD FILTER QUERY STRING FOR PAGINATION LINKS ---
-// Pagination links must carry all current filters in the URL
-// otherwise clicking "Next" would lose the user's search and show unfiltered results
-// Do NOT use array_filter here — it strips empty strings and breaks pagination
-// when the form was submitted with no filters active.
-// keyword must always be present in the URL so $searchSubmitted stays true on page 2.
+// Pagination links must carry all current filters AND sort state in the URL.
+// Otherwise clicking "Next" would lose the user's search and sort preference.
+// keyword must always be present so $searchSubmitted stays true on page 2+.
 $filterParams = [
     'keyword'   => $keyword,
     'category'  => $category,
     'status'    => $status,
     'date_from' => $dateFrom,
     'date_to'   => $dateTo,
+    'sort_col'  => $sortCol,
+    'sort_dir'  => $sortDir,
 ];
-// http_build_query turns the array into keyword=wallet&category=Electronics etc.
+// http_build_query turns the array into keyword=wallet&category=Electronics&sort_col=... etc.
 $filterQuery = http_build_query($filterParams);
+
+// --- SORT LINK HELPER ---
+// For each column header, build the URL that clicking it should go to.
+// If the user clicks the column that is already active, flip the direction.
+// If they click a different column, default to ascending.
+// $filterParams already contains the current filters — we just override sort keys.
+function sortLink(string $col, string $currentCol, string $currentDir, array $filterParams): string {
+    $newDir = ($col === $currentCol && $currentDir === 'asc') ? 'desc' : 'asc';
+    $filterParams['sort_col'] = $col;
+    $filterParams['sort_dir'] = $newDir;
+    return '?' . http_build_query($filterParams);
+}
+
+// Arrow indicator shown next to the active sort column header
+// Up arrow = ascending, down arrow = descending
+function sortArrow(string $col, string $currentCol, string $currentDir): string {
+    if ($col !== $currentCol) return '';
+    return $currentDir === 'asc' ? ' ↑' : ' ↓';
+}
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/navbar.php';
@@ -223,12 +266,36 @@ require_once __DIR__ . '/../includes/navbar.php';
         <table class="items-table">
             <thead>
                 <tr>
-                    <th>Item Name</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Location</th>
-                    <th>Reported By</th>
-                    <th>Date</th>
+                    <th>
+                        <a href="<?= sortLink('item_name', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
+                            Item Name<?= sortArrow('item_name', $sortCol, $sortDir) ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a href="<?= sortLink('category', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
+                            Category<?= sortArrow('category', $sortCol, $sortDir) ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a href="<?= sortLink('status', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
+                            Status<?= sortArrow('status', $sortCol, $sortDir) ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a href="<?= sortLink('location', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
+                            Location<?= sortArrow('location', $sortCol, $sortDir) ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a href="<?= sortLink('reporter_name', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
+                            Reported By<?= sortArrow('reporter_name', $sortCol, $sortDir) ?>
+                        </a>
+                    </th>
+                    <th>
+                        <a href="<?= sortLink('date_reported', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
+                            Date<?= sortArrow('date_reported', $sortCol, $sortDir) ?>
+                        </a>
+                    </th>
                     <th>Action</th>
                 </tr>
             </thead>
@@ -252,7 +319,7 @@ require_once __DIR__ . '/../includes/navbar.php';
             <div class="pagination">
 
                 <?php if ($page > 1): ?>
-                    <!-- Previous link carries all current filters + page-1 -->
+                    <!-- Previous link carries all current filters + sort state + page-1 -->
                     <a href="?<?= $filterQuery ?>&page=<?= $page - 1 ?>" class="page-btn">← Previous</a>
                 <?php else: ?>
                     <span class="page-btn page-btn-disabled">← Previous</span>
