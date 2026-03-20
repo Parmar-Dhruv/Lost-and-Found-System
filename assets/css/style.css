@@ -258,3 +258,65 @@ footer {
     font-size: 15px;
     padding: 40px 0;
 }
+
+/* ===== STATS GRID ===== */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+}
+
+.stat-card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Individual card accent colors */
+.stat-total    .stat-number { color: #343a40; }
+.stat-lost     .stat-number { color: #dc3545; }
+.stat-found    .stat-number { color: #198754; }
+.stat-claimed  .stat-number { color: #0d6efd; }
+.stat-expired  .stat-number { color: #fd7e14; }
+.stat-deleted  .stat-number { color: #6c757d; }
+.stat-users    .stat-number { color: #6610f2; }
+.stat-pending  .stat-number { color: #ffc107; }
+.stat-approved .stat-number { color: #20c997; }
+
+/* ===== ADMIN QUICK LINKS ===== */
+.admin-quick-links {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+}
+
+.admin-quick-links a {
+    padding: 8px 16px;
+    background: #343a40;
+    color: #fff;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 0.9rem;
+}
+
+.admin-quick-links a:hover {
+    background: #23272b;
+}
