@@ -17,7 +17,7 @@ if (empty($_SESSION['csrf_token'])) {
 $error   = $_GET['error']   ?? '';
 $success = $_GET['success'] ?? '';
 
-// Re-populate fields if the form was rejected (so user doesn't retype everything)
+// Re-populate fields if the form was rejected
 $old = [
     'item_name'     => htmlspecialchars($_GET['item_name']     ?? ''),
     'category'      => htmlspecialchars($_GET['category']      ?? ''),
@@ -30,14 +30,17 @@ $old = [
 
 // Human-readable error messages
 $errorMessages = [
-    'csrf'          => 'Security token mismatch. Please try again.',
-    'missing_fields'=> 'All fields are required. Please fill everything in.',
-    'future_date'   => 'Date reported cannot be in the future.',
-    'desc_too_short'=> 'Description must be at least 20 characters.',
-    'invalid_status'=> 'Invalid status selected.',
-    'invalid_cat'   => 'Invalid category selected.',
-    'not_verified'  => 'Your account must be verified to report items.',
-    'db_error'      => 'Something went wrong saving your report. Please try again.',
+    'csrf'           => 'Security token mismatch. Please try again.',
+    'missing_fields' => 'All fields are required. Please fill everything in.',
+    'future_date'    => 'Date reported cannot be in the future.',
+    'desc_too_short' => 'Description must be at least 20 characters.',
+    'invalid_status' => 'Invalid status selected.',
+    'invalid_cat'    => 'Invalid category selected.',
+    'not_verified'   => 'Your account must be verified to report items.',
+    'db_error'       => 'Something went wrong saving your report. Please try again.',
+    'upload_error'   => 'File upload failed. Please try again.',
+    'invalid_file'   => 'Only JPG, PNG, and GIF images are allowed.',
+    'file_too_large' => 'Image must be under 2MB.',
 ];
 
 include __DIR__ . '/../includes/header.php';
@@ -59,12 +62,11 @@ include __DIR__ . '/../includes/navbar.php';
         </div>
     <?php endif; ?>
 
-    <form action="<?= BASE_URL ?>actions/insert_item.php" method="POST">
+    <!-- enctype="multipart/form-data" is REQUIRED for file uploads -->
+    <form action="<?= BASE_URL ?>actions/insert_item.php" method="POST" enctype="multipart/form-data">
 
-        <!-- CSRF token — hidden, must be in every form -->
         <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-        <!-- Item Name -->
         <div class="form-group">
             <label for="item_name">Item Name <span class="text-danger">*</span></label>
             <input
@@ -79,7 +81,6 @@ include __DIR__ . '/../includes/navbar.php';
             >
         </div>
 
-        <!-- Category -->
         <div class="form-group">
             <label for="category">Category <span class="text-danger">*</span></label>
             <select id="category" name="category" class="form-control" required>
@@ -94,7 +95,6 @@ include __DIR__ . '/../includes/navbar.php';
             </select>
         </div>
 
-        <!-- Status -->
         <div class="form-group">
             <label for="status">Status <span class="text-danger">*</span></label>
             <select id="status" name="status" class="form-control" required>
@@ -104,7 +104,6 @@ include __DIR__ . '/../includes/navbar.php';
             <small class="form-text text-muted">Select "Lost" if you lost this item. Select "Found" if you found it.</small>
         </div>
 
-        <!-- Description -->
         <div class="form-group">
             <label for="description">Description <span class="text-danger">*</span></label>
             <textarea
@@ -118,7 +117,6 @@ include __DIR__ . '/../includes/navbar.php';
             <small class="form-text text-muted">Minimum 20 characters required.</small>
         </div>
 
-        <!-- Location -->
         <div class="form-group">
             <label for="location">Location <span class="text-danger">*</span></label>
             <input
@@ -133,7 +131,6 @@ include __DIR__ . '/../includes/navbar.php';
             >
         </div>
 
-        <!-- Contact -->
         <div class="form-group">
             <label for="contact">Contact Info <span class="text-danger">*</span></label>
             <input
@@ -148,7 +145,6 @@ include __DIR__ . '/../includes/navbar.php';
             >
         </div>
 
-        <!-- Date Reported -->
         <div class="form-group">
             <label for="date_reported">Date Reported <span class="text-danger">*</span></label>
             <input
@@ -161,6 +157,12 @@ include __DIR__ . '/../includes/navbar.php';
                 max="<?= date('Y-m-d') ?>"
             >
             <small class="form-text text-muted">Cannot be a future date.</small>
+        </div>
+
+        <div class="form-group">
+            <label for="image">Item Image <span class="text-muted">(optional)</span></label>
+            <input type="file" id="image" name="image" class="form-control-file" accept=".jpg,.jpeg,.png,.gif">
+            <small class="form-text text-muted">JPG, PNG or GIF only. Maximum size: 2MB. Uploading a photo helps others identify the item.</small>
         </div>
 
         <button type="submit" class="btn btn-primary">Submit Report</button>

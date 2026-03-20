@@ -114,13 +114,98 @@ if (mb_strlen($description) < 20) {
     exit;
 }
 
-// ── 10. Insert into DB ────────────────────────────────────────────────────────
+// ── 10. Image upload handling ─────────────────────────────────────────────────
+$image_path = null; // Default: no image
+
+if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
+
+    $file = $_FILES['image'];
+
+    // PHP-level upload error
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        $params = http_build_query([
+            'error'         => 'upload_error',
+            'item_name'     => $item_name,
+            'category'      => $category,
+            'description'   => $description,
+            'location'      => $location,
+            'contact'       => $contact,
+            'status'        => $status,
+            'date_reported' => $date_reported,
+        ]);
+        header('Location: ' . BASE_URL . 'pages/report.php?' . $params);
+        exit;
+    }
+
+    // Size check: max 2MB
+    if ($file['size'] > 2 * 1024 * 1024) {
+        $params = http_build_query([
+            'error'         => 'file_too_large',
+            'item_name'     => $item_name,
+            'category'      => $category,
+            'description'   => $description,
+            'location'      => $location,
+            'contact'       => $contact,
+            'status'        => $status,
+            'date_reported' => $date_reported,
+        ]);
+        header('Location: ' . BASE_URL . 'pages/report.php?' . $params);
+        exit;
+    }
+
+    // MIME type check via finfo — never trust $_FILES['type'], browser can fake it
+    $allowed_mime_types = ['image/jpeg', 'image/png', 'image/gif'];
+    $finfo     = new finfo(FILEINFO_MIME_TYPE);
+    $mime_type = $finfo->file($file['tmp_name']);
+
+    if (!in_array($mime_type, $allowed_mime_types, true)) {
+        $params = http_build_query([
+            'error'         => 'invalid_file',
+            'item_name'     => $item_name,
+            'category'      => $category,
+            'description'   => $description,
+            'location'      => $location,
+            'contact'       => $contact,
+            'status'        => $status,
+            'date_reported' => $date_reported,
+        ]);
+        header('Location: ' . BASE_URL . 'pages/report.php?' . $params);
+        exit;
+    }
+
+    // Build randomized filename — never use the original uploaded name
+    $ext_map      = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif'];
+    $extension    = $ext_map[$mime_type];
+    $new_filename = uniqid('img_', true) . '_' . bin2hex(random_bytes(8)) . '.' . $extension;
+    $upload_dir   = __DIR__ . '/../assets/uploads/';
+    $upload_path  = $upload_dir . $new_filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $upload_path)) {
+        $params = http_build_query([
+            'error'         => 'upload_error',
+            'item_name'     => $item_name,
+            'category'      => $category,
+            'description'   => $description,
+            'location'      => $location,
+            'contact'       => $contact,
+            'status'        => $status,
+            'date_reported' => $date_reported,
+        ]);
+        header('Location: ' . BASE_URL . 'pages/report.php?' . $params);
+        exit;
+    }
+
+    // Store relative path — never store absolute server paths in DB
+    $image_path = 'assets/uploads/' . $new_filename;
+}
+
+// ── 11. Insert into DB ────────────────────────────────────────────────────────
 try {
     $stmt = $db->prepare("
         INSERT INTO items
-            (user_id, item_name, category, description, location, contact, status, date_reported)
+            (user_id, item_name, category, description, location, contact, status, image, date_reported)
         VALUES
-            (?, ?, ?, ?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ");
     $stmt->execute([
         (int)$_SESSION['user_id'],
@@ -130,12 +215,13 @@ try {
         $location,
         $contact,
         $status,
+        $image_path,
         $date_reported,
     ]);
 
     $new_item_id = (int)$db->lastInsertId();
 
-    // ── 11. Log the action ────────────────────────────────────────────────────
+    // ── 12. Log the action ────────────────────────────────────────────────────
     $log = $db->prepare("
         INSERT INTO activity_log (user_id, action, entity, entity_id)
         VALUES (?, 'report_item', 'item', ?)
@@ -147,6 +233,6 @@ try {
     exit;
 }
 
-// ── 12. Success — redirect to report page with success flag ──────────────────
+// ── 13. Success ───────────────────────────────────────────────────────────────
 header('Location: ' . BASE_URL . 'pages/report.php?success=1');
 exit;

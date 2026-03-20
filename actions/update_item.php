@@ -24,8 +24,8 @@ if (
 }
 
 // ── 4. Collect and cast IDs immediately ──────────────────────────────────────
-$item_id = (int)($_POST['item_id'] ?? 0);
-$user_id = (int)$_SESSION['user_id'];
+$item_id  = (int)($_POST['item_id'] ?? 0);
+$user_id  = (int)$_SESSION['user_id'];
 $is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 
 if ($item_id <= 0) {
@@ -43,13 +43,11 @@ $stmt = $db->prepare("
 $stmt->execute([$item_id]);
 $item = $stmt->fetch();
 
-// Item must exist and not be deleted
 if (!$item) {
     header('Location: ' . BASE_URL . 'pages/my_items.php?error=not_found');
     exit;
 }
 
-// Only owner or admin can edit
 if ((int)$item['user_id'] !== $user_id && !$is_admin) {
     header('Location: ' . BASE_URL . 'pages/my_items.php?error=not_owner');
     exit;
@@ -105,7 +103,68 @@ if (mb_strlen($description) < 20) {
     exit;
 }
 
-// ── 11. Update the item in DB ─────────────────────────────────────────────────
+// ── 11. Image upload handling ─────────────────────────────────────────────────
+$new_image_path = $item['image']; // Keep existing image by default
+
+$remove_image   = isset($_POST['remove_image']) && $_POST['remove_image'] === '1';
+$has_new_upload = isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE;
+
+if ($has_new_upload) {
+
+    $file = $_FILES['image'];
+
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        header('Location: ' . BASE_URL . 'pages/my_items.php?edit=' . $item_id . '&error=upload_error');
+        exit;
+    }
+
+    if ($file['size'] > 2 * 1024 * 1024) {
+        header('Location: ' . BASE_URL . 'pages/my_items.php?edit=' . $item_id . '&error=file_too_large');
+        exit;
+    }
+
+    $allowed_mime_types = ['image/jpeg', 'image/png', 'image/gif'];
+    $finfo     = new finfo(FILEINFO_MIME_TYPE);
+    $mime_type = $finfo->file($file['tmp_name']);
+
+    if (!in_array($mime_type, $allowed_mime_types, true)) {
+        header('Location: ' . BASE_URL . 'pages/my_items.php?edit=' . $item_id . '&error=invalid_file');
+        exit;
+    }
+
+    $ext_map      = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif'];
+    $extension    = $ext_map[$mime_type];
+    $new_filename = uniqid('img_', true) . '_' . bin2hex(random_bytes(8)) . '.' . $extension;
+    $upload_dir   = __DIR__ . '/../assets/uploads/';
+    $upload_path  = $upload_dir . $new_filename;
+
+    if (!move_uploaded_file($file['tmp_name'], $upload_path)) {
+        header('Location: ' . BASE_URL . 'pages/my_items.php?edit=' . $item_id . '&error=upload_error');
+        exit;
+    }
+
+    // Delete old image file from disk — no orphan files
+    if (!empty($item['image'])) {
+        $old_file = __DIR__ . '/../' . $item['image'];
+        if (file_exists($old_file)) {
+            unlink($old_file);
+        }
+    }
+
+    $new_image_path = 'assets/uploads/' . $new_filename;
+
+} elseif ($remove_image) {
+
+    if (!empty($item['image'])) {
+        $old_file = __DIR__ . '/../' . $item['image'];
+        if (file_exists($old_file)) {
+            unlink($old_file);
+        }
+    }
+    $new_image_path = null;
+}
+
+// ── 12. Update the item in DB ─────────────────────────────────────────────────
 try {
     $stmt = $db->prepare("
         UPDATE items
@@ -115,6 +174,7 @@ try {
             location      = ?,
             contact       = ?,
             status        = ?,
+            image         = ?,
             date_reported = ?
         WHERE item_id  = ?
           AND is_deleted = 0
@@ -126,11 +186,12 @@ try {
         $location,
         $contact,
         $status,
+        $new_image_path,
         $date_reported,
         $item_id,
     ]);
 
-    // ── 12. Log the action ────────────────────────────────────────────────────
+    // ── 13. Log the action ────────────────────────────────────────────────────
     $log = $db->prepare("
         INSERT INTO activity_log (user_id, action, entity, entity_id)
         VALUES (?, 'edit_item', 'item', ?)
@@ -142,6 +203,6 @@ try {
     exit;
 }
 
-// ── 13. Success ───────────────────────────────────────────────────────────────
+// ── 14. Success ───────────────────────────────────────────────────────────────
 header('Location: ' . BASE_URL . 'pages/my_items.php?success=updated');
 exit;

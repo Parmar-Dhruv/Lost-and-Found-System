@@ -41,8 +41,8 @@ $success = $_GET['success'] ?? '';
 $error   = $_GET['error']   ?? '';
 
 $errorMessages = [
-    'not_owner'  => 'You can only edit or delete your own items.',
-    'db_error'   => 'Something went wrong. Please try again.',
+    'not_owner' => 'You can only edit or delete your own items.',
+    'db_error'  => 'Something went wrong. Please try again.',
 ];
 
 include __DIR__ . '/../includes/header.php';
@@ -79,6 +79,25 @@ function statusBadge(string $status): string {
             </span>
         </div>
 
+        <!-- Item image — shown only if one was uploaded -->
+        <?php if (!empty($item['image'])): ?>
+            <div class="item-image" style="margin-bottom:16px;">
+                <!--
+                    DB stores: assets/uploads/filename.jpg
+                    BASE_URL is: /lost-and-found/
+                    Result:      /lost-and-found/assets/uploads/filename.jpg
+                    DO NOT add 'assets/uploads/' here — it is already in the DB value.
+                -->
+                <img
+                    src="<?= BASE_URL . htmlspecialchars($item['image']) ?>"
+                    alt="Item Image"
+                    style="max-width:400px; border:1px solid #ccc; border-radius:4px;"
+                >
+            </div>
+        <?php else: ?>
+            <p><em>No image provided for this item.</em></p>
+        <?php endif; ?>
+
         <table class="table table-bordered">
             <tr>
                 <th style="width:200px;">Category</th>
@@ -110,24 +129,11 @@ function statusBadge(string $status): string {
             </tr>
         </table>
 
-        <?php if ($item['image']): ?>
-            <div class="item-image">
-                <img
-                    src="<?= BASE_URL . 'assets/uploads/' . htmlspecialchars($item['image']) ?>"
-                    alt="Item Image"
-                    style="max-width:400px; border:1px solid #ccc; border-radius:4px;"
-                >
-            </div>
-        <?php endif; ?>
-
         <div class="item-actions" style="margin-top:20px;">
 
             <?php if ($is_owner || $is_admin): ?>
-                <!-- Edit button — goes to report.php in edit mode -->
-                
-                    <a href="<?= BASE_URL ?>pages/my_items.php?edit=<?= $item['item_id'] ?>" class="btn btn-warning">Edit</a>
+                <a href="<?= BASE_URL ?>pages/my_items.php?edit=<?= $item['item_id'] ?>" class="btn btn-warning">Edit</a>
 
-                <!-- Delete button — POST form, never GET (EC-02) -->
                 <form
                     action="<?= BASE_URL ?>actions/delete_item.php"
                     method="POST"

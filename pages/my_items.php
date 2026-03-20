@@ -20,15 +20,18 @@ $success = $_GET['success'] ?? '';
 $error   = $_GET['error']   ?? '';
 
 $errorMessages = [
-    'not_owner'     => 'You can only edit or delete your own items.',
-    'db_error'      => 'Something went wrong. Please try again.',
-    'not_found'     => 'Item not found.',
-    'missing_fields'=> 'All fields are required.',
-    'future_date'   => 'Date reported cannot be in the future.',
-    'desc_too_short'=> 'Description must be at least 20 characters.',
-    'invalid_cat'   => 'Invalid category selected.',
-    'invalid_status'=> 'Invalid status selected.',
-    'csrf'          => 'Security token mismatch. Please try again.',
+    'not_owner'      => 'You can only edit or delete your own items.',
+    'db_error'       => 'Something went wrong. Please try again.',
+    'not_found'      => 'Item not found.',
+    'missing_fields' => 'All fields are required.',
+    'future_date'    => 'Date reported cannot be in the future.',
+    'desc_too_short' => 'Description must be at least 20 characters.',
+    'invalid_cat'    => 'Invalid category selected.',
+    'invalid_status' => 'Invalid status selected.',
+    'csrf'           => 'Security token mismatch. Please try again.',
+    'upload_error'   => 'File upload failed. Please try again.',
+    'invalid_file'   => 'Only JPG, PNG, and GIF images are allowed.',
+    'file_too_large' => 'Image must be under 2MB.',
 ];
 
 // ── 3. Check if we are in edit mode ──────────────────────────────────────────
@@ -36,7 +39,6 @@ $edit_id   = (int)($_GET['edit'] ?? 0);
 $edit_item = null;
 
 if ($edit_id > 0) {
-    // Fetch the item — must belong to this user and not be deleted
     $stmt = $db->prepare("
         SELECT * FROM items
         WHERE item_id  = ?
@@ -96,11 +98,11 @@ function statusBadge(string $status): string {
         <div class="edit-form-section" style="margin-bottom:40px; padding:20px; border:1px solid #ccc; border-radius:6px;">
             <h3>Edit Item: <?= htmlspecialchars($edit_item['item_name']) ?></h3>
 
-            <form action="<?= BASE_URL ?>actions/update_item.php" method="POST">
+            <!-- enctype required — user may replace the image -->
+            <form action="<?= BASE_URL ?>actions/update_item.php" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="item_id"    value="<?= $edit_item['item_id'] ?>">
 
-                <!-- Item Name -->
                 <div class="form-group">
                     <label for="item_name">Item Name <span class="text-danger">*</span></label>
                     <input type="text" id="item_name" name="item_name" class="form-control"
@@ -108,7 +110,6 @@ function statusBadge(string $status): string {
                            value="<?= htmlspecialchars($edit_item['item_name']) ?>">
                 </div>
 
-                <!-- Category -->
                 <div class="form-group">
                     <label for="category">Category <span class="text-danger">*</span></label>
                     <select id="category" name="category" class="form-control" required>
@@ -122,7 +123,6 @@ function statusBadge(string $status): string {
                     </select>
                 </div>
 
-                <!-- Status -->
                 <div class="form-group">
                     <label for="status">Status <span class="text-danger">*</span></label>
                     <select id="status" name="status" class="form-control" required>
@@ -136,7 +136,6 @@ function statusBadge(string $status): string {
                     </select>
                 </div>
 
-                <!-- Description -->
                 <div class="form-group">
                     <label for="description">Description <span class="text-danger">*</span></label>
                     <textarea id="description" name="description" class="form-control"
@@ -144,7 +143,6 @@ function statusBadge(string $status): string {
                     <small class="form-text text-muted">Minimum 20 characters.</small>
                 </div>
 
-                <!-- Location -->
                 <div class="form-group">
                     <label for="location">Location <span class="text-danger">*</span></label>
                     <input type="text" id="location" name="location" class="form-control"
@@ -152,7 +150,6 @@ function statusBadge(string $status): string {
                            value="<?= htmlspecialchars($edit_item['location']) ?>">
                 </div>
 
-                <!-- Contact -->
                 <div class="form-group">
                     <label for="contact">Contact Info <span class="text-danger">*</span></label>
                     <input type="text" id="contact" name="contact" class="form-control"
@@ -160,7 +157,6 @@ function statusBadge(string $status): string {
                            value="<?= htmlspecialchars($edit_item['contact']) ?>">
                 </div>
 
-                <!-- Date Reported -->
                 <div class="form-group">
                     <label for="date_reported">Date Reported <span class="text-danger">*</span></label>
                     <input type="date" id="date_reported" name="date_reported" class="form-control"
@@ -168,6 +164,30 @@ function statusBadge(string $status): string {
                            max="<?= date('Y-m-d') ?>"
                            value="<?= htmlspecialchars($edit_item['date_reported']) ?>">
                     <small class="form-text text-muted">Cannot be a future date.</small>
+                </div>
+
+                <!-- Current image display + option to remove or replace -->
+                <div class="form-group">
+                    <label>Current Image</label>
+                    <?php if (!empty($edit_item['image'])): ?>
+                        <div style="margin-bottom:8px;">
+                            <img src="<?= BASE_URL . htmlspecialchars($edit_item['image']) ?>"
+                                 alt="Current image"
+                                 style="max-width:200px; max-height:150px; object-fit:cover; display:block; margin-bottom:6px; border:1px solid #ccc; border-radius:4px;">
+                            <label style="font-weight:normal;">
+                                <input type="checkbox" name="remove_image" value="1">
+                                Remove current image
+                            </label>
+                        </div>
+                    <?php else: ?>
+                        <p><em>No image currently uploaded.</em></p>
+                    <?php endif; ?>
+                </div>
+
+                <div class="form-group">
+                    <label for="edit_image">Replace Image <span class="text-muted">(optional)</span></label>
+                    <input type="file" id="edit_image" name="image" class="form-control-file" accept=".jpg,.jpeg,.png,.gif">
+                    <small class="form-text text-muted">JPG, PNG or GIF only. Max 2MB. Leave blank to keep current image.</small>
                 </div>
 
                 <button type="submit" class="btn btn-primary">Save Changes</button>
@@ -187,6 +207,7 @@ function statusBadge(string $status): string {
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>Image</th>
                     <th>Item Name</th>
                     <th>Category</th>
                     <th>Status</th>
@@ -199,6 +220,15 @@ function statusBadge(string $status): string {
                 <?php foreach ($items as $item): ?>
                     <tr>
                         <td><?= (int)$item['item_id'] ?></td>
+                        <td>
+                            <?php if (!empty($item['image'])): ?>
+                                <img src="<?= BASE_URL . htmlspecialchars($item['image']) ?>"
+                                     alt="<?= htmlspecialchars($item['item_name']) ?>"
+                                     style="width:55px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #ccc;">
+                            <?php else: ?>
+                                <span class="text-muted" style="font-size:12px;">No image</span>
+                            <?php endif; ?>
+                        </td>
                         <td>
                             <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= (int)$item['item_id'] ?>">
                                 <?= htmlspecialchars($item['item_name']) ?>
