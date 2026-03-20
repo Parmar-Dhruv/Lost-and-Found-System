@@ -4,93 +4,119 @@ require_once __DIR__ . '/../config/init.php';
 $db = getDB();
 
 // --- COLLECT FILTER INPUTS ---
-// All come from GET (form uses method="get" so filters appear in URL)
-// We trim whitespace and default to empty string if not set
-// This lets users bookmark or share search URLs
-
-$keyword  = trim($_GET['keyword']  ?? '');
-$category = trim($_GET['category'] ?? '');
-$status   = trim($_GET['status']   ?? '');
+$keyword  = trim($_GET['keyword']   ?? '');
+$category = trim($_GET['category']  ?? '');
+$status   = trim($_GET['status']    ?? '');
 $dateFrom = trim($_GET['date_from'] ?? '');
 $dateTo   = trim($_GET['date_to']   ?? '');
 
 // --- WHITELIST VALIDATION ---
-// We never trust user input directly in queries
-// Category and status must be one of the allowed values or we ignore them
-// This prevents someone from injecting garbage into our WHERE clause
-
 $allowedCategories = ['Electronics', 'Clothing', 'Documents', 'Accessories', 'Other'];
 $allowedStatuses   = ['lost', 'found', 'claimed', 'expired'];
 
-if (!in_array($category, $allowedCategories)) {
-    $category = '';
-}
-if (!in_array($status, $allowedStatuses)) {
-    $status = '';
-}
+if (!in_array($category, $allowedCategories)) $category = '';
+if (!in_array($status,   $allowedStatuses))   $status   = '';
 
-// --- BUILD DYNAMIC QUERY ---
-// We start with a base query that always runs
-// Then we add WHERE conditions only for filters the user actually provided
-// We use an array to collect conditions and another for bound values
-// At the end we join conditions with AND
-
+// --- BUILD DYNAMIC WHERE CLAUSE ---
 $conditions = ["i.is_deleted = 0"];
 $params     = [];
 
 if ($keyword !== '') {
-    // LIKE search on item_name and description
-    // The % wildcards mean "anything before or after the keyword"
     $conditions[] = "(i.item_name LIKE ? OR i.description LIKE ?)";
     $params[]     = '%' . $keyword . '%';
     $params[]     = '%' . $keyword . '%';
 }
-
 if ($category !== '') {
     $conditions[] = "i.category = ?";
     $params[]     = $category;
 }
-
 if ($status !== '') {
     $conditions[] = "i.status = ?";
     $params[]     = $status;
 }
-
-if ($dateFrom !== '') {
-    // Validate it looks like a date before using it
-    if (strtotime($dateFrom) !== false) {
-        $conditions[] = "i.date_reported >= ?";
-        $params[]     = $dateFrom;
-    }
+if ($dateFrom !== '' && strtotime($dateFrom) !== false) {
+    $conditions[] = "i.date_reported >= ?";
+    $params[]     = $dateFrom;
+}
+if ($dateTo !== '' && strtotime($dateTo) !== false) {
+    $conditions[] = "i.date_reported <= ?";
+    $params[]     = $dateTo;
 }
 
-if ($dateTo !== '') {
-    if (strtotime($dateTo) !== false) {
-        $conditions[] = "i.date_reported <= ?";
-        $params[]     = $dateTo;
-    }
-}
-
-// Glue all conditions together into one WHERE clause
 $whereClause = implode(' AND ', $conditions);
 
-$sql = "
-    SELECT i.item_id, i.item_name, i.category, i.status,
-           i.location, i.date_reported, u.full_name AS reporter_name
-    FROM items i
-    JOIN users u ON i.user_id = u.user_id
-    WHERE $whereClause
-    ORDER BY i.created_at DESC
-";
-
-$stmt = $db->prepare($sql);
-$stmt->execute($params);
-$results = $stmt->fetchAll();
+// --- PAGINATION SETUP ---
+$perPage = 10;
+$page    = max(1, (int)($_GET['page'] ?? 1));
+$offset  = ($page - 1) * $perPage;
 
 // Flag: did the user actually submit the form?
-// We check if ANY filter key exists in the URL
 $searchSubmitted = isset($_GET['keyword']) || isset($_GET['category']) ||
                    isset($_GET['status'])  || isset($_GET['date_from']);
+
+// Count total matching results — needed to calculate total pages
+// Same WHERE clause, same params — just COUNT instead of SELECT
+$totalCount = 0;
+$totalPages = 1;
+
+if ($searchSubmitted) {
+    $countStmt = $db->prepare("
+        SELECT COUNT(*)
+        FROM items i
+        JOIN users u ON i.user_id = u.user_id
+        WHERE $whereClause
+    ");
+    $countStmt->execute($params);
+    $totalCount = (int)$countStmt->fetchColumn();
+    $totalPages = max(1, (int)ceil($totalCount / $perPage));
+
+    // Clamp current page to valid range in case URL is manually edited
+    $page = min($page, $totalPages);
+}
+
+// --- FETCH PAGINATED RESULTS ---
+$results = [];
+
+if ($searchSubmitted) {
+    // We need to append LIMIT and OFFSET to the params array
+    // But we use bindValue for those so they are typed as integers
+    $sql = "
+        SELECT i.item_id, i.item_name, i.category, i.status,
+               i.location, i.date_reported, u.full_name AS reporter_name
+        FROM items i
+        JOIN users u ON i.user_id = u.user_id
+        WHERE $whereClause
+        ORDER BY i.created_at DESC
+        LIMIT ? OFFSET ?
+    ";
+
+    $stmt = $db->prepare($sql);
+
+    // Bind the filter params first (they are strings — PDO default type is fine)
+    foreach ($params as $i => $val) {
+        $stmt->bindValue($i + 1, $val);
+    }
+
+    // Bind LIMIT and OFFSET as integers — must be explicit or MySQL may reject them
+    $stmt->bindValue(count($params) + 1, $perPage, PDO::PARAM_INT);
+    $stmt->bindValue(count($params) + 2, $offset,  PDO::PARAM_INT);
+
+    $stmt->execute();
+    $results = $stmt->fetchAll();
+}
+
+// --- BUILD FILTER QUERY STRING FOR PAGINATION LINKS ---
+// Pagination links must carry all current filters in the URL
+// otherwise clicking "Next" would lose the user's search and show unfiltered results
+$filterParams = array_filter([
+    'keyword'   => $keyword,
+    'category'  => $category,
+    'status'    => $status,
+    'date_from' => $dateFrom,
+    'date_to'   => $dateTo,
+]);
+// http_build_query turns the array into keyword=wallet&category=Electronics etc.
+$filterQuery = http_build_query($filterParams);
 
 require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/navbar.php';
@@ -102,7 +128,6 @@ require_once __DIR__ . '/../includes/navbar.php';
     <p>Filter by keyword, category, status, or date range.</p>
 
     <!-- SEARCH FORM -->
-    <!-- method="get" keeps filters visible in the URL — good for sharing/bookmarking -->
     <form method="get" action="<?= BASE_URL ?>pages/search.php" class="search-form">
 
         <div class="form-row">
@@ -185,7 +210,12 @@ require_once __DIR__ . '/../includes/navbar.php';
 
     <?php else: ?>
 
-        <p>Found <strong><?= count($results) ?></strong> item(s).</p>
+        <p>
+            Found <strong><?= $totalCount ?></strong> item(s).
+            <?php if ($totalPages > 1): ?>
+                Showing page <?= $page ?> of <?= $totalPages ?>.
+            <?php endif; ?>
+        </p>
 
         <table class="items-table">
             <thead>
@@ -213,6 +243,28 @@ require_once __DIR__ . '/../includes/navbar.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+
+        <!-- PAGINATION CONTROLS -->
+        <?php if ($totalPages > 1): ?>
+            <div class="pagination">
+
+                <?php if ($page > 1): ?>
+                    <!-- Previous link carries all current filters + page-1 -->
+                    <a href="?<?= $filterQuery ?>&page=<?= $page - 1 ?>" class="page-btn">← Previous</a>
+                <?php else: ?>
+                    <span class="page-btn page-btn-disabled">← Previous</span>
+                <?php endif; ?>
+
+                <span class="page-info">Page <?= $page ?> of <?= $totalPages ?></span>
+
+                <?php if ($page < $totalPages): ?>
+                    <a href="?<?= $filterQuery ?>&page=<?= $page + 1 ?>" class="page-btn">Next →</a>
+                <?php else: ?>
+                    <span class="page-btn page-btn-disabled">Next →</span>
+                <?php endif; ?>
+
+            </div>
+        <?php endif; ?>
 
     <?php endif; ?>
 

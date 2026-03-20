@@ -4,9 +4,6 @@ require_once __DIR__ . '/../config/init.php';
 $db = getDB();
 
 // EC-12: Auto-expire lost items older than 30 days
-// This query runs on every home.php load
-// It finds any item with status='lost' that was reported more than 30 days ago
-// and flips its status to 'expired' automatically — no manual admin action needed
 $db->exec("
     UPDATE items
     SET status = 'expired'
@@ -16,33 +13,43 @@ $db->exec("
 ");
 
 // --- STATS QUERIES ---
-// Each query counts a specific subset of items
-// We exclude soft-deleted items in every query using is_deleted = 0
-
-// Total items ever reported (not deleted)
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE is_deleted = 0");
 $stmt->execute();
 $totalItems = $stmt->fetchColumn();
 
-// Items currently marked as lost
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'lost' AND is_deleted = 0");
 $stmt->execute();
 $totalLost = $stmt->fetchColumn();
 
-// Items currently marked as found
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'found' AND is_deleted = 0");
 $stmt->execute();
 $totalFound = $stmt->fetchColumn();
 
-// Items that have been successfully claimed
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'claimed' AND is_deleted = 0");
 $stmt->execute();
 $totalClaimed = $stmt->fetchColumn();
 
-// --- RECENT ITEMS FEED ---
-// Fetch last 5 items reported, newest first
-// We JOIN with users table to get the reporter's name
-// We exclude soft-deleted items
+// --- PAGINATION SETUP ---
+// How many items to show per page
+$perPage = 10;
+
+// Get current page from URL — default to 1 if not set or invalid
+// Cast to int immediately, floor at 1
+$page = max(1, (int)($_GET['page'] ?? 1));
+
+// Calculate how many rows to skip
+// Page 1: offset 0, Page 2: offset 10, Page 3: offset 20, etc.
+$offset = ($page - 1) * $perPage;
+
+// Count total items for pagination math
+$stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE is_deleted = 0");
+$stmt->execute();
+$totalCount = (int)$stmt->fetchColumn();
+
+// How many pages total — ceil() rounds UP so partial pages still get a page
+$totalPages = (int)ceil($totalCount / $perPage);
+
+// Fetch only the items for the current page using LIMIT and OFFSET
 $stmt = $db->prepare("
     SELECT i.item_id, i.item_name, i.category, i.status, i.location, i.date_reported,
            u.full_name AS reporter_name
@@ -50,8 +57,11 @@ $stmt = $db->prepare("
     JOIN users u ON i.user_id = u.user_id
     WHERE i.is_deleted = 0
     ORDER BY i.created_at DESC
-    LIMIT 5
+    LIMIT ? OFFSET ?
 ");
+// LIMIT and OFFSET must be bound as integers — PDO needs explicit type for these
+$stmt->bindValue(1, $perPage, PDO::PARAM_INT);
+$stmt->bindValue(2, $offset,  PDO::PARAM_INT);
 $stmt->execute();
 $recentItems = $stmt->fetchAll();
 
@@ -65,7 +75,6 @@ require_once __DIR__ . '/../includes/navbar.php';
     <p>Track lost and found items reported by the community.</p>
 
     <!-- STATS CARDS -->
-    <!-- Four boxes showing key numbers at a glance -->
     <div class="stats-grid">
 
         <div class="stat-card stat-total">
@@ -90,8 +99,13 @@ require_once __DIR__ . '/../includes/navbar.php';
 
     </div>
 
-    <!-- RECENT ITEMS FEED -->
-    <h3>Recently Reported Items</h3>
+    <!-- ALL ITEMS FEED (paginated) -->
+    <h3>
+        All Reported Items
+        <small style="font-size:14px; font-weight:normal; color:#666;">
+            (<?= $totalCount ?> total)
+        </small>
+    </h3>
 
     <?php if (empty($recentItems)): ?>
         <p>No items have been reported yet.</p>
@@ -122,10 +136,31 @@ require_once __DIR__ . '/../includes/navbar.php';
                 <?php endforeach; ?>
             </tbody>
         </table>
+
+        <!-- PAGINATION CONTROLS -->
+        <?php if ($totalPages > 1): ?>
+            <div class="pagination">
+
+                <?php if ($page > 1): ?>
+                    <a href="?page=<?= $page - 1 ?>" class="page-btn">← Previous</a>
+                <?php else: ?>
+                    <span class="page-btn page-btn-disabled">← Previous</span>
+                <?php endif; ?>
+
+                <span class="page-info">Page <?= $page ?> of <?= $totalPages ?></span>
+
+                <?php if ($page < $totalPages): ?>
+                    <a href="?page=<?= $page + 1 ?>" class="page-btn">Next →</a>
+                <?php else: ?>
+                    <span class="page-btn page-btn-disabled">Next →</span>
+                <?php endif; ?>
+
+            </div>
+        <?php endif; ?>
+
     <?php endif; ?>
 
-    <!-- Link to full search/browse page -->
-    <p><a href="<?= BASE_URL ?>pages/search.php">Browse all items →</a></p>
+    <p><a href="<?= BASE_URL ?>pages/search.php">Search and filter items →</a></p>
 
 </div>
 
