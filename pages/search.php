@@ -51,8 +51,8 @@ $page    = max(1, (int)($_GET['page'] ?? 1));
 $offset  = ($page - 1) * $perPage;
 
 // Flag: did the user actually submit the form?
-$searchSubmitted = isset($_GET['keyword']) || isset($_GET['category']) ||
-                   isset($_GET['status'])  || isset($_GET['date_from']);
+// array_key_exists on 'keyword' is enough — it's always present when form is submitted
+$searchSubmitted = array_key_exists('keyword', $_GET);
 
 // Count total matching results — needed to calculate total pages
 // Same WHERE clause, same params — just COUNT instead of SELECT
@@ -108,13 +108,16 @@ if ($searchSubmitted) {
 // --- BUILD FILTER QUERY STRING FOR PAGINATION LINKS ---
 // Pagination links must carry all current filters in the URL
 // otherwise clicking "Next" would lose the user's search and show unfiltered results
-$filterParams = array_filter([
+// Do NOT use array_filter here — it strips empty strings and breaks pagination
+// when the form was submitted with no filters active.
+// keyword must always be present in the URL so $searchSubmitted stays true on page 2.
+$filterParams = [
     'keyword'   => $keyword,
     'category'  => $category,
     'status'    => $status,
     'date_from' => $dateFrom,
     'date_to'   => $dateTo,
-]);
+];
 // http_build_query turns the array into keyword=wallet&category=Electronics etc.
 $filterQuery = http_build_query($filterParams);
 
