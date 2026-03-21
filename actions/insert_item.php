@@ -45,12 +45,12 @@ $date_reported = trim($_POST['date_reported'] ?? '');
 
 // ── 6. Required fields check ─────────────────────────────────────────────────
 if (
-    $item_name === '' ||
-    $category  === '' ||
+    $item_name   === '' ||
+    $category    === '' ||
     $description === '' ||
-    $location  === '' ||
-    $contact   === '' ||
-    $status    === '' ||
+    $location    === '' ||
+    $contact     === '' ||
+    $status      === '' ||
     $date_reported === ''
 ) {
     $params = http_build_query([
@@ -115,13 +115,12 @@ if (mb_strlen($description) < 20) {
 }
 
 // ── 10. Image upload handling ─────────────────────────────────────────────────
-$image_path = null; // Default: no image
+$image_path = null;
 
 if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE) {
 
     $file = $_FILES['image'];
 
-    // PHP-level upload error
     if ($file['error'] !== UPLOAD_ERR_OK) {
         $params = http_build_query([
             'error'         => 'upload_error',
@@ -137,7 +136,6 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE)
         exit;
     }
 
-    // Size check: max 2MB
     if ($file['size'] > 2 * 1024 * 1024) {
         $params = http_build_query([
             'error'         => 'file_too_large',
@@ -153,7 +151,6 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE)
         exit;
     }
 
-    // MIME type check via finfo — never trust $_FILES['type'], browser can fake it
     $allowed_mime_types = ['image/jpeg', 'image/png', 'image/gif'];
     $finfo     = new finfo(FILEINFO_MIME_TYPE);
     $mime_type = $finfo->file($file['tmp_name']);
@@ -173,7 +170,6 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE)
         exit;
     }
 
-    // Build randomized filename — never use the original uploaded name
     $ext_map      = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/gif' => 'gif'];
     $extension    = $ext_map[$mime_type];
     $new_filename = uniqid('img_', true) . '_' . bin2hex(random_bytes(8)) . '.' . $extension;
@@ -195,7 +191,6 @@ if (isset($_FILES['image']) && $_FILES['image']['error'] !== UPLOAD_ERR_NO_FILE)
         exit;
     }
 
-    // Store relative path — never store absolute server paths in DB
     $image_path = 'assets/uploads/' . $new_filename;
 }
 
@@ -233,6 +228,50 @@ try {
     exit;
 }
 
-// ── 13. Success ───────────────────────────────────────────────────────────────
-header('Location: ' . BASE_URL . 'pages/report.php?success=1');
+// ── 13. Auto item matching (v12.0) ────────────────────────────────────────────
+// Search for items that are the opposite status, same category,
+// similar name (LIKE), not deleted, within 7 days of this item's date_reported.
+//
+// Lost item just reported  → search found items
+// Found item just reported → search lost items
+
+$opposite_status = ($status === 'lost') ? 'found' : 'lost';
+
+// Use individual words from item_name for broader matching
+// e.g. "Black iPhone 13" → check if any existing item contains "Black", "iPhone", or "13"
+// We use the full name as one LIKE pattern — simple and effective for this scope
+$match_keyword = '%' . $item_name . '%';
+
+$match_stmt = $db->prepare("
+    SELECT item_id, item_name, location, date_reported
+    FROM items
+    WHERE status     = ?
+      AND category   = ?
+      AND item_name  LIKE ?
+      AND is_deleted = 0
+      AND item_id   != ?
+      AND ABS(DATEDIFF(date_reported, ?)) <= 7
+    LIMIT 5
+");
+$match_stmt->execute([
+    $opposite_status,
+    $category,
+    $match_keyword,
+    $new_item_id,
+    $date_reported,
+]);
+$matches = $match_stmt->fetchAll();
+
+// ── 14. Build redirect URL ────────────────────────────────────────────────────
+// Pass matched IDs as comma-separated string in URL
+// item_detail.php will read this and show the alert
+
+$redirect_params = ['success' => 'reported'];
+
+if (!empty($matches)) {
+    $matched_ids = implode(',', array_column($matches, 'item_id'));
+    $redirect_params['matches'] = $matched_ids;
+}
+
+header('Location: ' . BASE_URL . 'pages/item_detail.php?id=' . $new_item_id . '&' . http_build_query($redirect_params));
 exit;

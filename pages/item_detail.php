@@ -44,7 +44,36 @@ if (isset($_SESSION['user_id'])) {
     $already_claimed = (bool)$chk->fetch();
 }
 
-// ── 6. CSRF token ─────────────────────────────────────────────────────────────
+// ── 6. Parse matched item IDs from URL (v12.0) ────────────────────────────────
+// insert_item.php passes matched IDs as comma-separated string: ?matches=3,7,12
+// We validate each one is a positive integer before using them
+$matched_items = [];
+if (!empty($_GET['matches'])) {
+    $raw_ids = explode(',', $_GET['matches']);
+    $safe_ids = [];
+    foreach ($raw_ids as $raw_id) {
+        $safe_id = (int)trim($raw_id);
+        if ($safe_id > 0) {
+            $safe_ids[] = $safe_id;
+        }
+    }
+
+    if (!empty($safe_ids)) {
+        // Fetch only the IDs that actually exist and are not deleted
+        // We use a safe IN clause built from already-cast integers
+        $placeholders = implode(',', array_fill(0, count($safe_ids), '?'));
+        $match_fetch  = $db->prepare("
+            SELECT item_id, item_name, location, date_reported, status
+            FROM items
+            WHERE item_id IN ($placeholders)
+              AND is_deleted = 0
+        ");
+        $match_fetch->execute($safe_ids);
+        $matched_items = $match_fetch->fetchAll();
+    }
+}
+
+// ── 7. CSRF token ─────────────────────────────────────────────────────────────
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -55,7 +84,6 @@ $error   = $_GET['error']   ?? '';
 $errorMessages = [
     'not_owner'       => 'You can only edit or delete your own items.',
     'db_error'        => 'Something went wrong. Please try again.',
-    // Claim errors
     'not_logged_in'   => 'You must be logged in to submit a claim.',
     'invalid_item'    => 'Invalid item.',
     'not_claimable'   => 'This item is not available for claiming.',
@@ -64,8 +92,9 @@ $errorMessages = [
 ];
 
 $successMessages = [
-    'updated'      => 'Item updated successfully.',
-    'claim_sent'   => 'Your claim has been submitted. The admin will review it.',
+    'updated'   => 'Item updated successfully.',
+    'claim_sent' => 'Your claim has been submitted. The admin will review it.',
+    'reported'  => 'Item reported successfully.',
 ];
 
 include __DIR__ . '/../includes/header.php';
@@ -89,6 +118,33 @@ function statusBadge(string $status): string {
         <div class="alert alert-success"><?= $successMessages[$success] ?></div>
     <?php endif; ?>
 
+    <!-- ── MATCH ALERT (v12.0) ────────────────────────────────────────────────
+         Only shown immediately after reporting a new item.
+         insert_item.php passes matched IDs in the URL — if none found, this
+         block is simply skipped.
+    ──────────────────────────────────────────────────────────────────────── -->
+    <?php if (!empty($matched_items)): ?>
+        <div class="alert alert-warning" style="border-left: 4px solid #e6a817;">
+            <strong>⚡ Possible Matches Found!</strong>
+            We found <?= count($matched_items) ?> item(s) in our system that may be related to yours.
+            Check them out:
+            <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+                <?php foreach ($matched_items as $match): ?>
+                    <li>
+                        <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= $match['item_id'] ?>">
+                            <?= htmlspecialchars($match['item_name']) ?>
+                        </a>
+                        — <?= htmlspecialchars($match['location']) ?>
+                        <span class="badge <?= statusBadge($match['status']) ?>" style="margin-left:6px;">
+                            <?= ucfirst($match['status']) ?>
+                        </span>
+                        <small style="color:#aaa;">(reported: <?= htmlspecialchars($match['date_reported']) ?>)</small>
+                    </li>
+                <?php endforeach; ?>
+            </ul>
+        </div>
+    <?php endif; ?>
+
     <?php if ($error && isset($errorMessages[$error])): ?>
         <div class="alert alert-danger"><?= $errorMessages[$error] ?></div>
     <?php endif; ?>
@@ -102,15 +158,8 @@ function statusBadge(string $status): string {
             </span>
         </div>
 
-        <!-- Item image — shown only if one was uploaded -->
         <?php if (!empty($item['image'])): ?>
             <div class="item-image" style="margin-bottom:16px;">
-                <!--
-                    DB stores: assets/uploads/filename.jpg
-                    BASE_URL is: /lost-and-found/
-                    Result:      /lost-and-found/assets/uploads/filename.jpg
-                    DO NOT add 'assets/uploads/' here — it is already in the DB value.
-                -->
                 <img
                     src="<?= BASE_URL . htmlspecialchars($item['image']) ?>"
                     alt="Item Image"
@@ -173,13 +222,6 @@ function statusBadge(string $status): string {
 
         </div>
 
-        <!-- ── CLAIM SECTION ─────────────────────────────────────────────────
-             Show claim form only when ALL of these are true:
-             1. Item status is 'found' (lost/claimed/expired cannot be claimed)
-             2. A user is logged in
-             3. User has NOT already submitted a claim on this item
-             Admin is intentionally excluded — admins manage claims, they don't submit them
-        ──────────────────────────────────────────────────────────────────── -->
         <?php if ($item['status'] === 'found' && isset($_SESSION['user_id']) && !$is_admin): ?>
 
             <div class="claim-section" style="margin-top:30px; border-top:2px solid #e94560; padding-top:20px;">
@@ -187,7 +229,6 @@ function statusBadge(string $status): string {
                 <h3>Submit a Claim</h3>
 
                 <?php if ($is_owner): ?>
-                    <!-- EC-06: Owner is allowed to claim — but we flag it clearly -->
                     <div class="alert alert-warning" style="margin-bottom:12px;">
                         <strong>Note:</strong> You are the original reporter of this item.
                         You can still submit a claim if you are also the owner of the found item.
@@ -229,7 +270,6 @@ function statusBadge(string $status): string {
             </div>
 
         <?php elseif ($item['status'] !== 'found' && !$is_owner && !$is_admin && isset($_SESSION['user_id'])): ?>
-            <!-- Item exists but is not claimable — tell the user why -->
             <div class="claim-section" style="margin-top:30px; border-top:2px solid #ccc; padding-top:20px;">
                 <p style="color:#888;">
                     <?php if ($item['status'] === 'claimed'): ?>
@@ -243,7 +283,6 @@ function statusBadge(string $status): string {
             </div>
 
         <?php elseif (!isset($_SESSION['user_id']) && $item['status'] === 'found'): ?>
-            <!-- Not logged in but item is claimable — nudge them to log in -->
             <div class="claim-section" style="margin-top:30px; border-top:2px solid #e94560; padding-top:20px;">
                 <p>
                     <a href="<?= BASE_URL ?>auth/login.php">Log in</a> to submit a claim for this item.
@@ -252,8 +291,8 @@ function statusBadge(string $status): string {
 
         <?php endif; ?>
 
-    </div><!-- /.item-detail-card -->
+    </div>
 
-</div><!-- /.container -->
+</div>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

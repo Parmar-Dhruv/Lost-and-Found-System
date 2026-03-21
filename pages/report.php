@@ -13,9 +13,9 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-// Grab any error or old input passed back from insert_item.php
-$error   = $_GET['error']   ?? '';
-$success = $_GET['success'] ?? '';
+// Grab any error passed back from insert_item.php
+// Note: success message removed — after successful report, user lands on item_detail.php
+$error = $_GET['error'] ?? '';
 
 // Re-populate fields if the form was rejected
 $old = [
@@ -49,12 +49,6 @@ include __DIR__ . '/../includes/navbar.php';
 
 <div class="container">
     <h2>Report a Lost or Found Item</h2>
-
-    <?php if ($success === '1'): ?>
-        <div class="alert alert-success">
-            Item reported successfully! <a href="<?= BASE_URL ?>pages/my_items.php">View your items</a>.
-        </div>
-    <?php endif; ?>
 
     <?php if ($error && isset($errorMessages[$error])): ?>
         <div class="alert alert-danger">
@@ -162,7 +156,7 @@ include __DIR__ . '/../includes/navbar.php';
         <div class="form-group">
             <label for="image">Item Image <span class="text-muted">(optional)</span></label>
             <input type="file" id="image" name="image" class="form-control-file" accept=".jpg,.jpeg,.png,.gif">
-            <small class="form-text text-muted">JPG, PNG or GIF only. Maximum size: 2MB. Uploading a photo helps others identify the item.</small>
+            <small class="form-text text-muted">JPG, PNG or GIF only. Maximum size: 2MB.</small>
         </div>
 
         <button type="submit" class="btn btn-primary">Submit Report</button>
@@ -172,4 +166,3 @@ include __DIR__ . '/../includes/navbar.php';
 </div>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
-1:
