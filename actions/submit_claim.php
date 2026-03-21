@@ -1,6 +1,7 @@
 <?php
 // actions/submit_claim.php
 require_once __DIR__ . '/../config/init.php';
+require_once __DIR__ . '/../config/mailer.php';
 
 // ── 1. CSRF check — always first ─────────────────────────────────────────────
 if (
@@ -43,10 +44,12 @@ $db = getDB();
 
 // ── 5. Fetch item — must exist, not deleted, status must be 'found' ───────────
 $stmt = $db->prepare("
-    SELECT item_id, status, user_id
-    FROM items
-    WHERE item_id = ?
-      AND is_deleted = 0
+    SELECT i.item_id, i.status, i.user_id, i.item_name,
+           u.full_name AS reporter_name, u.email AS reporter_email
+    FROM items i
+    JOIN users u ON u.user_id = i.user_id
+    WHERE i.item_id = ?
+      AND i.is_deleted = 0
 ");
 $stmt->execute([$item_id]);
 $item = $stmt->fetch();
@@ -62,7 +65,6 @@ if ($item['status'] !== 'found') {
 }
 
 // ── 6. Duplicate claim check (EC-05) ─────────────────────────────────────────
-// One user cannot submit two claims on the same item
 $dup = $db->prepare("
     SELECT claim_id FROM claims
     WHERE item_id = ? AND claimant_id = ?
@@ -75,20 +77,55 @@ if ($dup->fetch()) {
     exit;
 }
 
-// ── 7. Insert the claim ───────────────────────────────────────────────────────
+// ── 7. Fetch claimant details for email ───────────────────────────────────────
+$claimantStmt = $db->prepare("
+    SELECT full_name, email FROM users WHERE user_id = ?
+");
+$claimantStmt->execute([$user_id]);
+$claimant = $claimantStmt->fetch();
+
+// ── 8. Insert the claim ───────────────────────────────────────────────────────
 try {
     $ins = $db->prepare("
         INSERT INTO claims (item_id, claimant_id, message, status)
         VALUES (?, ?, ?, 'pending')
     ");
     $ins->execute([$item_id, $user_id, $message]);
+    $new_claim_id = (int)$db->lastInsertId();
 
-    // ── 8. Log the action ─────────────────────────────────────────────────────
+    // ── 9. Log the action ─────────────────────────────────────────────────────
     $log = $db->prepare("
         INSERT INTO activity_log (user_id, action, entity, entity_id)
         VALUES (?, 'submit_claim', 'claim', ?)
     ");
-    $log->execute([$user_id, $db->lastInsertId()]);
+    $log->execute([$user_id, $new_claim_id]);
+
+    // ── 10. Email: notify claimant that their claim was received ──────────────
+    if ($claimant) {
+        $subject = 'Your Claim Has Been Submitted — ' . $item['item_name'];
+        $body = '
+            <p>Hi ' . htmlspecialchars($claimant['full_name']) . ',</p>
+            <p>Your claim for the item <strong>' . htmlspecialchars($item['item_name']) . '</strong> has been submitted successfully.</p>
+            <p>Your message: <em>' . htmlspecialchars($message) . '</em></p>
+            <p>An admin will review your claim shortly. You will receive another email when a decision is made.</p>
+            <br>
+            <p>— Lost and Found System</p>
+        ';
+        sendMail($claimant['email'], $claimant['full_name'], $subject, $body);
+    }
+
+    // ── 11. Email: notify item reporter that a claim was submitted ────────────
+    if ($item['reporter_email'] !== ($claimant['email'] ?? '')) {
+        $subject = 'Someone Has Claimed Your Item — ' . $item['item_name'];
+        $body = '
+            <p>Hi ' . htmlspecialchars($item['reporter_name']) . ',</p>
+            <p>A user has submitted a claim on the item you reported: <strong>' . htmlspecialchars($item['item_name']) . '</strong>.</p>
+            <p>An admin will review the claim and make a decision. No action is required from you at this time.</p>
+            <br>
+            <p>— Lost and Found System</p>
+        ';
+        sendMail($item['reporter_email'], $item['reporter_name'], $subject, $body);
+    }
 
     header('Location: ' . BASE_URL . 'pages/item_detail.php?id=' . $item_id . '&success=claim_sent');
     exit;
