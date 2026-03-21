@@ -32,7 +32,19 @@ if (!$item) {
 $is_owner = isset($_SESSION['user_id']) && ((int)$_SESSION['user_id'] === (int)$item['user_id']);
 $is_admin = isset($_SESSION['role'])    && $_SESSION['role'] === 'admin';
 
-// ── 5. CSRF token for the delete form ────────────────────────────────────────
+// ── 5. Has the logged-in user already submitted a claim on this item? ─────────
+$already_claimed = false;
+if (isset($_SESSION['user_id'])) {
+    $chk = $db->prepare("
+        SELECT claim_id FROM claims
+        WHERE item_id = ? AND claimant_id = ?
+        LIMIT 1
+    ");
+    $chk->execute([$item_id, (int)$_SESSION['user_id']]);
+    $already_claimed = (bool)$chk->fetch();
+}
+
+// ── 6. CSRF token ─────────────────────────────────────────────────────────────
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -41,8 +53,19 @@ $success = $_GET['success'] ?? '';
 $error   = $_GET['error']   ?? '';
 
 $errorMessages = [
-    'not_owner' => 'You can only edit or delete your own items.',
-    'db_error'  => 'Something went wrong. Please try again.',
+    'not_owner'       => 'You can only edit or delete your own items.',
+    'db_error'        => 'Something went wrong. Please try again.',
+    // Claim errors
+    'not_logged_in'   => 'You must be logged in to submit a claim.',
+    'invalid_item'    => 'Invalid item.',
+    'not_claimable'   => 'This item is not available for claiming.',
+    'duplicate_claim' => 'You have already submitted a claim for this item.',
+    'claim_failed'    => 'Failed to submit claim. Please try again.',
+];
+
+$successMessages = [
+    'updated'      => 'Item updated successfully.',
+    'claim_sent'   => 'Your claim has been submitted. The admin will review it.',
 ];
 
 include __DIR__ . '/../includes/header.php';
@@ -62,8 +85,8 @@ function statusBadge(string $status): string {
 
 <div class="container">
 
-    <?php if ($success === 'updated'): ?>
-        <div class="alert alert-success">Item updated successfully.</div>
+    <?php if ($success && isset($successMessages[$success])): ?>
+        <div class="alert alert-success"><?= $successMessages[$success] ?></div>
     <?php endif; ?>
 
     <?php if ($error && isset($errorMessages[$error])): ?>
@@ -146,14 +169,91 @@ function statusBadge(string $status): string {
                 </form>
             <?php endif; ?>
 
-            <!-- CLAIM BUTTON PLACEHOLDER — implemented in v11.0 -->
-
             <a href="<?= BASE_URL ?>pages/home.php" class="btn btn-secondary">← Back to Home</a>
 
         </div>
 
-    </div>
+        <!-- ── CLAIM SECTION ─────────────────────────────────────────────────
+             Show claim form only when ALL of these are true:
+             1. Item status is 'found' (lost/claimed/expired cannot be claimed)
+             2. A user is logged in
+             3. User has NOT already submitted a claim on this item
+             Admin is intentionally excluded — admins manage claims, they don't submit them
+        ──────────────────────────────────────────────────────────────────── -->
+        <?php if ($item['status'] === 'found' && isset($_SESSION['user_id']) && !$is_admin): ?>
 
-</div>
+            <div class="claim-section" style="margin-top:30px; border-top:2px solid #e94560; padding-top:20px;">
+
+                <h3>Submit a Claim</h3>
+
+                <?php if ($is_owner): ?>
+                    <!-- EC-06: Owner is allowed to claim — but we flag it clearly -->
+                    <div class="alert alert-warning" style="margin-bottom:12px;">
+                        <strong>Note:</strong> You are the original reporter of this item.
+                        You can still submit a claim if you are also the owner of the found item.
+                        The admin will be notified of this.
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($already_claimed): ?>
+                    <div class="alert alert-info">
+                        You have already submitted a claim for this item.
+                        Please wait for the admin to review it.
+                    </div>
+                <?php else: ?>
+                    <form action="<?= BASE_URL ?>actions/submit_claim.php" method="POST">
+                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                        <input type="hidden" name="item_id"    value="<?= $item['item_id'] ?>">
+
+                        <div class="form-group">
+                            <label for="claim_message">
+                                Why is this item yours? Provide as much detail as possible.
+                                <span style="color:#e94560;">*</span>
+                            </label>
+                            <textarea
+                                id="claim_message"
+                                name="message"
+                                rows="4"
+                                class="form-control"
+                                placeholder="Describe identifying features, when/where you lost it, proof of ownership..."
+                                required
+                            ><?= htmlspecialchars($_GET['message'] ?? '') ?></textarea>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" style="margin-top:10px;">
+                            Submit Claim
+                        </button>
+                    </form>
+                <?php endif; ?>
+
+            </div>
+
+        <?php elseif ($item['status'] !== 'found' && !$is_owner && !$is_admin && isset($_SESSION['user_id'])): ?>
+            <!-- Item exists but is not claimable — tell the user why -->
+            <div class="claim-section" style="margin-top:30px; border-top:2px solid #ccc; padding-top:20px;">
+                <p style="color:#888;">
+                    <?php if ($item['status'] === 'claimed'): ?>
+                        This item has already been claimed.
+                    <?php elseif ($item['status'] === 'expired'): ?>
+                        This report has expired and is no longer accepting claims.
+                    <?php else: ?>
+                        Claims can only be submitted on found items.
+                    <?php endif; ?>
+                </p>
+            </div>
+
+        <?php elseif (!isset($_SESSION['user_id']) && $item['status'] === 'found'): ?>
+            <!-- Not logged in but item is claimable — nudge them to log in -->
+            <div class="claim-section" style="margin-top:30px; border-top:2px solid #e94560; padding-top:20px;">
+                <p>
+                    <a href="<?= BASE_URL ?>auth/login.php">Log in</a> to submit a claim for this item.
+                </p>
+            </div>
+
+        <?php endif; ?>
+
+    </div><!-- /.item-detail-card -->
+
+</div><!-- /.container -->
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
