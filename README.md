@@ -399,11 +399,7 @@ Student · Charotar University of Science and Technology (CHARUSAT) · 2026
 If this project helped you, saved you time, or you just want to say thanks — a small contribution means a lot.
 
 <div align="center">
-
-**Pay via UPI — Scan with Google Pay, PhonePe, Paytm, or BHIM**
-
-![UPI QR](https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=upi://pay?pa=dhruvparmar8714-1@okhdfcbank%26pn=Dhruv%20Parmar%26cu=INR)
-
+  
 **UPI ID:** `dhruvparmar8714-1@okhdfcbank`
 
 </div>
