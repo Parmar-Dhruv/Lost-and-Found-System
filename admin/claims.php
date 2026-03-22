@@ -1,10 +1,9 @@
 <?php
-// admin/claims.php
 require_once __DIR__ . '/auth_check.php';
 
 $db = getDB();
 
-// ── Fetch all claims with item and user info, newest first ────────────────────
+// --- Fetch all claims ---
 $stmt = $db->prepare("
     SELECT
         c.claim_id,
@@ -27,7 +26,7 @@ $stmt = $db->prepare("
 $stmt->execute();
 $claims = $stmt->fetchAll();
 
-// ── CSRF token ────────────────────────────────────────────────────────────────
+// --- CSRF token ---
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -50,185 +49,217 @@ $errorMessages = [
     'db_error'        => 'Database error. Please try again.',
 ];
 
-// Helper: badge class for claim status
-function claimBadge(string $status): string {
+// --- Badge classes ---
+function claimBadgeClass(string $status): string {
     return match($status) {
-        'pending'  => 'badge-warning',
-        'approved' => 'badge-success',
-        'rejected' => 'badge-danger',
-        default    => 'badge-secondary',
+        'pending'  => 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+        'approved' => 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        'rejected' => 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        default    => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
     };
 }
+
+// --- Item status badge classes ---
+function itemBadgeClass(string $status): string {
+    return match($status) {
+        'lost'    => 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        'found'   => 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        'claimed' => 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        'expired' => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+        default   => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+    };
+}
+
+require_once __DIR__ . '/../includes/header.php';
+require_once __DIR__ . '/sidebar.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Claims — Admin</title>
-    <link rel="stylesheet" href="<?= BASE_URL ?>assets/css/style.css">
-    <style>
-        .claim-row { border:1px solid #333; border-radius:6px; padding:16px; margin-bottom:16px; background:#1a1a2e; }
-        .claim-row h4 { margin:0 0 8px; color:#e94560; }
-        .claim-meta { font-size:0.85em; color:#aaa; margin-bottom:10px; }
-        .claim-message { background:#0f3460; padding:10px; border-radius:4px; margin-bottom:12px; white-space:pre-wrap; }
-        .claim-actions form { display:inline-block; margin-right:8px; vertical-align:top; }
-        .remark-input { width:300px; padding:6px; border-radius:4px; border:1px solid #555; background:#16213e; color:#fff; resize:vertical; }
-        .self-claim-note { background:#3a2a00; border:1px solid #e6a817; color:#e6a817; padding:6px 10px; border-radius:4px; font-size:0.82em; margin-bottom:8px; display:inline-block; }
-    </style>
-</head>
-<body>
 
-<nav>
-    <a href="<?= BASE_URL ?>pages/home.php">← Back to Site</a> |
-    <a href="<?= BASE_URL ?>admin/index.php">Dashboard</a> |
-    <a href="<?= BASE_URL ?>admin/items.php">Items</a> |
-    <a href="<?= BASE_URL ?>admin/users.php">Users</a> |
-    <a href="<?= BASE_URL ?>admin/claims.php">Claims</a> |
-    <a href="<?= BASE_URL ?>admin/logs.php">Logs</a> |
-    <a href="<?= BASE_URL ?>auth/logout.php">Logout</a>
-</nav>
+    <!-- TOP BAR -->
+    <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 py-4 flex items-center justify-between flex-shrink-0">
+        <div>
+            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">Manage Claims</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Review, approve, and reject item claims</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-500 dark:text-gray-400">Logged in as</span>
+            <span class="text-sm font-medium text-gray-900 dark:text-white"><?= htmlspecialchars($_SESSION['full_name']) ?></span>
+            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                <?= strtoupper(substr($_SESSION['full_name'], 0, 1)) ?>
+            </div>
+        </div>
+    </header>
 
-<div class="container">
-    <h1>Manage Claims</h1>
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 px-8 py-8 space-y-6">
 
-    <?php if ($success && isset($successMessages[$success])): ?>
-        <div class="alert alert-success"><?= $successMessages[$success] ?></div>
-    <?php endif; ?>
+        <?php if ($success && isset($successMessages[$success])): ?>
+            <div class="px-4 py-3 rounded-lg text-sm bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300">
+                <?= htmlspecialchars($successMessages[$success]) ?>
+            </div>
+        <?php endif; ?>
 
-    <?php if ($error && isset($errorMessages[$error])): ?>
-        <div class="alert alert-danger"><?= $errorMessages[$error] ?></div>
-    <?php endif; ?>
+        <?php if ($error && isset($errorMessages[$error])): ?>
+            <div class="px-4 py-3 rounded-lg text-sm bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300">
+                <?= htmlspecialchars($errorMessages[$error]) ?>
+            </div>
+        <?php endif; ?>
 
-    <?php if (empty($claims)): ?>
-        <p>No claims have been submitted yet.</p>
-    <?php else: ?>
+        <?php if (empty($claims)): ?>
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                No claims have been submitted yet.
+            </div>
+        <?php else: ?>
 
-        <p>Total claims: <strong><?= count($claims) ?></strong></p>
+            <!-- SUMMARY BAR -->
+            <div class="flex items-center justify-between">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    <span class="font-medium text-gray-900 dark:text-white"><?= count($claims) ?></span> total claims
+                </p>
+            </div>
 
-        <?php foreach ($claims as $c): ?>
+            <!-- CLAIMS LIST -->
+            <div class="space-y-4">
+            <?php foreach ($claims as $c):
+                $isSelfClaim  = ((int)$c['claimant_id'] === (int)$c['item_owner_id']);
+                $isCollected  = str_contains($c['admin_remark'] ?? '', 'Collected and closed');
+            ?>
+                <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
 
-            <div class="claim-row">
+                    <!-- CLAIM HEADER -->
+                    <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="text-xs text-gray-400 dark:text-gray-500 font-mono">
+                                    #<?= $c['claim_id'] ?>
+                                </span>
+                                <span class="text-base font-semibold text-gray-900 dark:text-white">
+                                    <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= $c['item_id'] ?>"
+                                       class="hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                        <?= htmlspecialchars($c['item_name']) ?>
+                                    </a>
+                                </span>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium <?= itemBadgeClass($c['item_status']) ?>">
+                                    <?= ucfirst(htmlspecialchars($c['item_status'])) ?>
+                                </span>
+                            </div>
+                            <div class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                <span class="font-medium text-gray-700 dark:text-gray-300"><?= htmlspecialchars($c['claimant_name']) ?></span>
+                                &lt;<?= htmlspecialchars($c['claimant_email']) ?>&gt;
+                                &nbsp;·&nbsp;
+                                <?= htmlspecialchars($c['claimed_at']) ?>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <?php if ($isSelfClaim): ?>
+                                <!-- EC-06: claimant is the original reporter -->
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                                    </svg>
+                                    Original Reporter
+                                </span>
+                            <?php endif; ?>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold <?= claimBadgeClass($c['claim_status']) ?>">
+                                <?= ucfirst(htmlspecialchars($c['claim_status'])) ?>
+                            </span>
+                        </div>
+                    </div>
 
-                <h4>
-                    Claim #<?= $c['claim_id'] ?> —
-                    <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= $c['item_id'] ?>" style="color:#e94560;">
-                        <?= htmlspecialchars($c['item_name']) ?>
-                    </a>
-                    <span style="font-size:0.75em; color:#aaa; margin-left:8px;">
-                        (Item status: <?= ucfirst(htmlspecialchars($c['item_status'])) ?>)
-                    </span>
-                </h4>
+                    <!-- CLAIM BODY -->
+                    <div class="px-6 py-4 space-y-4">
 
-                <!-- EC-06: Flag if claimant is the original item reporter -->
-                <?php if ((int)$c['claimant_id'] === (int)$c['item_owner_id']): ?>
-                    <span class="self-claim-note">
-                        ⚠ This claimant is the original reporter of this item.
-                    </span>
-                <?php endif; ?>
+                        <!-- Claimant message -->
+                        <div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                            <?= nl2br(htmlspecialchars($c['message'])) ?>
+                        </div>
 
-                <div class="claim-meta">
-                    <strong>Claimant:</strong> <?= htmlspecialchars($c['claimant_name']) ?>
-                    (<?= htmlspecialchars($c['claimant_email']) ?>)
-                    &nbsp;|&nbsp;
-                    <strong>Submitted:</strong> <?= htmlspecialchars($c['claimed_at']) ?>
-                    &nbsp;|&nbsp;
-                    <strong>Status:</strong>
-                    <span class="badge <?= claimBadge($c['claim_status']) ?>">
-                        <?= ucfirst(htmlspecialchars($c['claim_status'])) ?>
-                    </span>
-                </div>
-
-                <div class="claim-message">
-                    <?= nl2br(htmlspecialchars($c['message'])) ?>
-                </div>
-
-                <?php if (!empty($c['admin_remark'])): ?>
-                    <p style="color:#aaa; font-size:0.85em;">
-                        <strong>Admin remark:</strong> <?= nl2br(htmlspecialchars($c['admin_remark'])) ?>
-                    </p>
-                <?php endif; ?>
-
-                <!-- ── ACTION BUTTONS ──────────────────────────────────────── -->
-                <div class="claim-actions">
-
-                    <?php if ($c['claim_status'] === 'pending'): ?>
-
-                        <!-- APPROVE -->
-                        <form action="<?= BASE_URL ?>actions/handle_claim.php" method="POST">
-                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                            <input type="hidden" name="claim_id"   value="<?= $c['claim_id'] ?>">
-                            <input type="hidden" name="action"     value="approve">
-                            <textarea
-                                name="admin_remark"
-                                class="remark-input"
-                                rows="2"
-                                placeholder="Optional approval note..."
-                            ></textarea><br>
-                            <button
-                                type="submit"
-                                class="btn btn-success"
-                                style="margin-top:6px;"
-                                onclick="return confirm('Approve this claim? All other pending claims for this item will be auto-rejected.');"
-                            >Approve</button>
-                        </form>
-
-                        <!-- REJECT -->
-                        <form action="<?= BASE_URL ?>actions/handle_claim.php" method="POST">
-                            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                            <input type="hidden" name="claim_id"   value="<?= $c['claim_id'] ?>">
-                            <input type="hidden" name="action"     value="reject">
-                            <textarea
-                                name="admin_remark"
-                                class="remark-input"
-                                rows="2"
-                                placeholder="Reason for rejection (visible to claimant)..."
-                            ></textarea><br>
-                            <!-- EC-08: rejection reason is stored in admin_remark and shown to claimant -->
-                            <button
-                                type="submit"
-                                class="btn btn-danger"
-                                style="margin-top:6px;"
-                                onclick="return confirm('Reject this claim?');"
-                            >Reject</button>
-                        </form>
-
-                    <?php elseif ($c['claim_status'] === 'approved'): ?>
-
-                        <!-- EC-07: Two-step — approved but not yet collected -->
-                        <?php
-                        // Check if already marked collected
-                        $is_collected = str_contains($c['admin_remark'] ?? '', 'Collected and closed');
-                        ?>
-                        <?php if (!$is_collected): ?>
-                            <form action="<?= BASE_URL ?>actions/handle_claim.php" method="POST">
-                                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                <input type="hidden" name="claim_id"   value="<?= $c['claim_id'] ?>">
-                                <input type="hidden" name="action"     value="collected">
-                                <button
-                                    type="submit"
-                                    class="btn btn-primary"
-                                    onclick="return confirm('Confirm item has been physically collected by the claimant?');"
-                                >Mark as Collected</button>
-                            </form>
-                        <?php else: ?>
-                            <span style="color:#4caf50;">✓ Item collected and closed.</span>
+                        <!-- Admin remark (if any) -->
+                        <?php if (!empty($c['admin_remark'])): ?>
+                            <div class="text-sm text-gray-500 dark:text-gray-400">
+                                <span class="font-medium text-gray-700 dark:text-gray-300">Admin remark:</span>
+                                <?= nl2br(htmlspecialchars($c['admin_remark'])) ?>
+                            </div>
                         <?php endif; ?>
 
-                    <?php else: ?>
-                        <!-- Rejected — no actions available -->
-                        <span style="color:#888; font-size:0.9em;">No further actions available.</span>
-                    <?php endif; ?>
+                        <!-- ACTION BUTTONS -->
+                        <?php if ($c['claim_status'] === 'pending'): ?>
+                            <div class="flex flex-wrap gap-4 pt-2">
 
-                </div><!-- /.claim-actions -->
+                                <!-- APPROVE form -->
+                                <form action="<?= BASE_URL ?>actions/handle_claim.php" method="POST" class="flex-1 min-w-56">
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                    <input type="hidden" name="claim_id"   value="<?= $c['claim_id'] ?>">
+                                    <input type="hidden" name="action"     value="approve">
+                                    <textarea name="admin_remark" rows="2"
+                                              placeholder="Optional approval note..."
+                                              class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none mb-2"></textarea>
+                                    <button type="submit"
+                                            onclick="return confirm('Approve this claim? All other pending claims for this item will be auto-rejected.');"
+                                            class="w-full px-4 py-2 text-sm font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white transition focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2">
+                                        Approve
+                                    </button>
+                                </form>
 
-            </div><!-- /.claim-row -->
+                                <!-- REJECT form -->
+                                <form action="<?= BASE_URL ?>actions/handle_claim.php" method="POST" class="flex-1 min-w-56">
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                    <input type="hidden" name="claim_id"   value="<?= $c['claim_id'] ?>">
+                                    <input type="hidden" name="action"     value="reject">
+                                    <!-- EC-08: rejection reason visible to claimant -->
+                                    <textarea name="admin_remark" rows="2"
+                                              placeholder="Reason for rejection (visible to claimant)..."
+                                              class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none mb-2"></textarea>
+                                    <button type="submit"
+                                            onclick="return confirm('Reject this claim?');"
+                                            class="w-full px-4 py-2 text-sm font-medium rounded-lg border border-red-400 text-red-600 dark:text-red-400 dark:border-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                                        Reject
+                                    </button>
+                                </form>
 
-        <?php endforeach; ?>
+                            </div>
 
-    <?php endif; ?>
+                        <?php elseif ($c['claim_status'] === 'approved'): ?>
+                            <!-- EC-07: Two-step collected confirmation -->
+                            <?php if (!$isCollected): ?>
+                                <form action="<?= BASE_URL ?>actions/handle_claim.php" method="POST">
+                                    <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                    <input type="hidden" name="claim_id"   value="<?= $c['claim_id'] ?>">
+                                    <input type="hidden" name="action"     value="collected">
+                                    <button type="submit"
+                                            onclick="return confirm('Confirm item has been physically collected by the claimant?');"
+                                            class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                        </svg>
+                                        Mark as Collected
+                                    </button>
+                                </form>
+                            <?php else: ?>
+                                <div class="inline-flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    Item collected and closed
+                                </div>
+                            <?php endif; ?>
 
-</div>
+                        <?php else: ?>
+                            <p class="text-sm text-gray-400 dark:text-gray-500 italic">No further actions available.</p>
+                        <?php endif; ?>
 
-</body>
-</html>
+                    </div><!-- /claim body -->
+
+                </div><!-- /claim card -->
+
+            <?php endforeach; ?>
+            </div>
+
+        <?php endif; ?>
+
+    </main>
+
+    </div><!-- /content-wrapper: opened in sidebar.php -->
+</div><!-- /x-data wrapper: opened in sidebar.php -->
+
+<?php require_once __DIR__ . '/footer.php'; ?>

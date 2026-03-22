@@ -34,7 +34,7 @@ $errorMessages = [
     'file_too_large' => 'Image must be under 2MB.',
 ];
 
-// ── 3. Check if we are in edit mode ──────────────────────────────────────────
+// ── 3. Edit mode ──────────────────────────────────────────────────────────────
 $edit_id   = (int)($_GET['edit'] ?? 0);
 $edit_item = null;
 
@@ -64,204 +64,269 @@ $stmt = $db->prepare("
 $stmt->execute([$user_id]);
 $items = $stmt->fetchAll();
 
-include __DIR__ . '/../includes/header.php';
-include __DIR__ . '/../includes/navbar.php';
-
-function statusBadge(string $status): string {
+function statusBadgeClass(string $status): string {
     return match($status) {
-        'lost'    => 'badge-danger',
-        'found'   => 'badge-success',
-        'claimed' => 'badge-primary',
-        'expired' => 'badge-secondary',
-        default   => 'badge-light',
+        'lost'    => 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+        'found'   => 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+        'claimed' => 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+        'expired' => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+        default   => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
     };
 }
+
+include __DIR__ . '/../includes/header.php';
+include __DIR__ . '/../includes/navbar.php';
 ?>
 
-<div class="container">
-    <h2>My Reported Items</h2>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
 
+    <div class="mb-6 flex items-center justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">My Reported Items</h1>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage all the items you have reported.</p>
+        </div>
+        <?php if (!empty($items)): ?>
+            <a href="<?= BASE_URL ?>actions/export_my_items_pdf.php"
+               class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                ⬇ Export to PDF
+            </a>
+        <?php endif; ?>
+    </div>
+
+    <!-- Alerts -->
     <?php if ($success === 'updated'): ?>
-        <div class="alert alert-success">Item updated successfully.</div>
+        <div class="mb-5 px-4 py-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-sm text-green-700 dark:text-green-300">
+            Item updated successfully.
+        </div>
     <?php elseif ($success === 'deleted'): ?>
-        <div class="alert alert-success">Item deleted successfully.</div>
+        <div class="mb-5 px-4 py-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-sm text-green-700 dark:text-green-300">
+            Item deleted successfully.
+        </div>
     <?php endif; ?>
 
     <?php if ($error && isset($errorMessages[$error])): ?>
-        <div class="alert alert-danger"><?= $errorMessages[$error] ?></div>
+        <div class="mb-5 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-sm text-red-700 dark:text-red-300">
+            <?= $errorMessages[$error] ?>
+        </div>
     <?php endif; ?>
 
-    <!-- ── EDIT FORM ─────────────────────────────────────────────────────── -->
+    <!-- ── EDIT FORM ──────────────────────────────────────────────────────── -->
     <?php if ($edit_item): ?>
-        <div class="edit-form-section" style="margin-bottom:40px; padding:20px; border:1px solid #ccc; border-radius:6px;">
-            <h3>Edit Item: <?= htmlspecialchars($edit_item['item_name']) ?></h3>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-8 mb-8">
+
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                Edit Item: <?= htmlspecialchars($edit_item['item_name']) ?>
+            </h2>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Update the details below and save your changes.</p>
 
             <form action="<?= BASE_URL ?>actions/update_item.php" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="item_id"    value="<?= $edit_item['item_id'] ?>">
 
-                <div class="form-group">
-                    <label for="item_name">Item Name <span class="text-danger">*</span></label>
-                    <input type="text" id="item_name" name="item_name" class="form-control"
-                           maxlength="100" required
-                           value="<?= htmlspecialchars($edit_item['item_name']) ?>">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+
+                    <div>
+                        <label for="item_name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Item Name <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="item_name" name="item_name"
+                               maxlength="100" required
+                               value="<?= htmlspecialchars($edit_item['item_name']) ?>"
+                               class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                    </div>
+
+                    <div>
+                        <label for="category" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Category <span class="text-red-500">*</span>
+                        </label>
+                        <select id="category" name="category" required
+                                class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                            <?php foreach (['Electronics','Clothing','Documents','Accessories','Other'] as $cat): ?>
+                                <option value="<?= $cat ?>" <?= $edit_item['category'] === $cat ? 'selected' : '' ?>><?= $cat ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Status <span class="text-red-500">*</span>
+                        </label>
+                        <select id="status" name="status" required
+                                class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                            <?php foreach (['lost','found'] as $s): ?>
+                                <option value="<?= $s ?>" <?= $edit_item['status'] === $s ? 'selected' : '' ?>><?= ucfirst($s) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="date_reported" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Date Reported <span class="text-red-500">*</span>
+                        </label>
+                        <input type="date" id="date_reported" name="date_reported"
+                               required max="<?= date('Y-m-d') ?>"
+                               value="<?= htmlspecialchars($edit_item['date_reported']) ?>"
+                               class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                    </div>
+
+                    <div>
+                        <label for="location" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Location <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="location" name="location"
+                               maxlength="150" required
+                               value="<?= htmlspecialchars($edit_item['location']) ?>"
+                               class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                    </div>
+
+                    <div>
+                        <label for="contact" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                            Contact Info <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" id="contact" name="contact"
+                               maxlength="100" required
+                               value="<?= htmlspecialchars($edit_item['contact']) ?>"
+                               class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                    </div>
+
                 </div>
 
-                <div class="form-group">
-                    <label for="category">Category <span class="text-danger">*</span></label>
-                    <select id="category" name="category" class="form-control" required>
-                        <?php
-                        $categories = ['Electronics', 'Clothing', 'Documents', 'Accessories', 'Other'];
-                        foreach ($categories as $cat):
-                            $selected = ($edit_item['category'] === $cat) ? 'selected' : '';
-                        ?>
-                            <option value="<?= $cat ?>" <?= $selected ?>><?= $cat ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                <div class="mb-5">
+                    <label for="description" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        Description <span class="text-red-500">*</span>
+                    </label>
+                    <textarea id="description" name="description"
+                              rows="4" required
+                              class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition resize-none"><?= htmlspecialchars($edit_item['description']) ?></textarea>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">Minimum 20 characters.</p>
                 </div>
 
-                <div class="form-group">
-                    <label for="status">Status <span class="text-danger">*</span></label>
-                    <select id="status" name="status" class="form-control" required>
-                        <?php
-                        $statuses = ['lost', 'found'];
-                        foreach ($statuses as $s):
-                            $selected = ($edit_item['status'] === $s) ? 'selected' : '';
-                        ?>
-                            <option value="<?= $s ?>" <?= $selected ?>><?= ucfirst($s) ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label for="description">Description <span class="text-danger">*</span></label>
-                    <textarea id="description" name="description" class="form-control"
-                              rows="4" required><?= htmlspecialchars($edit_item['description']) ?></textarea>
-                    <small class="form-text text-muted">Minimum 20 characters.</small>
-                </div>
-
-                <div class="form-group">
-                    <label for="location">Location <span class="text-danger">*</span></label>
-                    <input type="text" id="location" name="location" class="form-control"
-                           maxlength="150" required
-                           value="<?= htmlspecialchars($edit_item['location']) ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="contact">Contact Info <span class="text-danger">*</span></label>
-                    <input type="text" id="contact" name="contact" class="form-control"
-                           maxlength="100" required
-                           value="<?= htmlspecialchars($edit_item['contact']) ?>">
-                </div>
-
-                <div class="form-group">
-                    <label for="date_reported">Date Reported <span class="text-danger">*</span></label>
-                    <input type="date" id="date_reported" name="date_reported" class="form-control"
-                           required
-                           max="<?= date('Y-m-d') ?>"
-                           value="<?= htmlspecialchars($edit_item['date_reported']) ?>">
-                    <small class="form-text text-muted">Cannot be a future date.</small>
-                </div>
-
-                <div class="form-group">
-                    <label>Current Image</label>
+                <!-- Current image -->
+                <div class="mb-5">
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Current Image</label>
                     <?php if (!empty($edit_item['image'])): ?>
-                        <div style="margin-bottom:8px;">
-                            <img src="<?= BASE_URL . htmlspecialchars($edit_item['image']) ?>"
-                                 alt="Current image"
-                                 style="max-width:200px; max-height:150px; object-fit:cover; display:block; margin-bottom:6px; border:1px solid #ccc; border-radius:4px;">
-                            <label style="font-weight:normal;">
-                                <input type="checkbox" name="remove_image" value="1">
-                                Remove current image
-                            </label>
-                        </div>
+                        <img src="<?= BASE_URL . htmlspecialchars($edit_item['image']) ?>"
+                             alt="Current image"
+                             class="w-32 h-32 object-cover rounded-lg border border-gray-200 dark:border-gray-700 mb-3">
+                        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+                            <input type="checkbox" name="remove_image" value="1"
+                                   class="rounded border-gray-300 dark:border-gray-600">
+                            Remove current image
+                        </label>
                     <?php else: ?>
-                        <p><em>No image currently uploaded.</em></p>
+                        <p class="text-sm text-gray-400 dark:text-gray-500 italic">No image currently uploaded.</p>
                     <?php endif; ?>
                 </div>
 
-                <div class="form-group">
-                    <label for="edit_image">Replace Image <span class="text-muted">(optional)</span></label>
-                    <input type="file" id="edit_image" name="image" class="form-control-file" accept=".jpg,.jpeg,.png,.gif">
-                    <small class="form-text text-muted">JPG, PNG or GIF only. Max 2MB. Leave blank to keep current image.</small>
+                <!-- Replace image -->
+                <div class="mb-8">
+                    <label for="edit_image" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        Replace Image <span class="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input type="file" id="edit_image" name="image"
+                           accept=".jpg,.jpeg,.png,.gif"
+                           class="w-full text-sm text-gray-600 dark:text-gray-300
+                                  file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0
+                                  file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700
+                                  dark:file:bg-blue-900/30 dark:file:text-blue-300
+                                  hover:file:bg-blue-100 transition">
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">JPG, PNG or GIF only. Max 2MB. Leave blank to keep current image.</p>
                 </div>
 
-                <button type="submit" class="btn btn-primary">Save Changes</button>
-                <a href="<?= BASE_URL ?>pages/my_items.php" class="btn btn-secondary">Cancel</a>
+                <div class="flex gap-3">
+                    <button type="submit"
+                            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Save Changes
+                    </button>
+                    <a href="<?= BASE_URL ?>pages/my_items.php"
+                       class="px-6 py-2.5 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium rounded-lg transition">
+                        Cancel
+                    </a>
+                </div>
+
             </form>
         </div>
     <?php endif; ?>
 
-    <!-- ── ITEMS TABLE ────────────────────────────────────────────────────── -->
+    <!-- ── ITEMS TABLE ─────────────────────────────────────────────────────── -->
     <?php if (empty($items)): ?>
-        <div class="alert alert-info">
-            You have not reported any items yet.
-            <a href="<?= BASE_URL ?>pages/report.php">Report one now</a>.
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm px-6 py-16 text-center">
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-3">You have not reported any items yet.</p>
+            <a href="<?= BASE_URL ?>pages/report.php"
+               class="inline-block px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition">
+                Report an Item
+            </a>
         </div>
     <?php else: ?>
-
-        <!-- Export button -->
-        <p>
-            <a href="<?= BASE_URL ?>actions/export_my_items_pdf.php" class="btn btn-secondary">
-                ⬇ Export My Items to PDF
-            </a>
-        </p>
-
-        <table class="table table-bordered table-striped">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>Image</th>
-                    <th>Item Name</th>
-                    <th>Category</th>
-                    <th>Status</th>
-                    <th>Location</th>
-                    <th>Date Reported</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($items as $item): ?>
-                    <tr>
-                        <td><?= (int)$item['item_id'] ?></td>
-                        <td>
-                            <?php if (!empty($item['image'])): ?>
-                                <img src="<?= BASE_URL . htmlspecialchars($item['image']) ?>"
-                                     alt="<?= htmlspecialchars($item['item_name']) ?>"
-                                     style="width:55px; height:55px; object-fit:cover; border-radius:4px; border:1px solid #ccc;">
-                            <?php else: ?>
-                                <span class="text-muted" style="font-size:12px;">No image</span>
-                            <?php endif; ?>
-                        </td>
-                        <td>
-                            <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= (int)$item['item_id'] ?>">
-                                <?= htmlspecialchars($item['item_name']) ?>
-                            </a>
-                        </td>
-                        <td><?= htmlspecialchars($item['category']) ?></td>
-                        <td>
-                            <span class="badge <?= statusBadge($item['status']) ?>">
-                                <?= ucfirst(htmlspecialchars($item['status'])) ?>
-                            </span>
-                        </td>
-                        <td><?= htmlspecialchars($item['location']) ?></td>
-                        <td><?= htmlspecialchars($item['date_reported']) ?></td>
-                        <td>
-                            <a href="<?= BASE_URL ?>pages/my_items.php?edit=<?= (int)$item['item_id'] ?>" class="btn btn-warning btn-sm">Edit</a>
-
-                            <form action="<?= BASE_URL ?>actions/delete_item.php" method="POST" style="display:inline;"
-                                  onsubmit="return confirm('Delete this item? This cannot be undone.');">
-                                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
-                                <input type="hidden" name="item_id"    value="<?= (int)$item['item_id'] ?>">
-                                <button type="submit" class="btn btn-danger btn-sm">Delete</button>
-                            </form>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-gray-50 dark:bg-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <tr>
+                            <th class="px-6 py-3">#</th>
+                            <th class="px-6 py-3">Image</th>
+                            <th class="px-6 py-3">Item Name</th>
+                            <th class="px-6 py-3">Category</th>
+                            <th class="px-6 py-3">Status</th>
+                            <th class="px-6 py-3">Location</th>
+                            <th class="px-6 py-3">Date</th>
+                            <th class="px-6 py-3">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        <?php foreach ($items as $item): ?>
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                            <td class="px-6 py-4 text-gray-500 dark:text-gray-400"><?= (int)$item['item_id'] ?></td>
+                            <td class="px-6 py-4">
+                                <?php if (!empty($item['image'])): ?>
+                                    <img src="<?= BASE_URL . htmlspecialchars($item['image']) ?>"
+                                         alt="<?= htmlspecialchars($item['item_name']) ?>"
+                                         class="w-12 h-12 object-cover rounded-lg border border-gray-200 dark:border-gray-700">
+                                <?php else: ?>
+                                    <div class="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+                                        <span class="text-xs text-gray-400">None</span>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
+                            <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= (int)$item['item_id'] ?>"
+                                   class="hover:text-blue-600 dark:hover:text-blue-400 transition">
+                                    <?= htmlspecialchars($item['item_name']) ?>
+                                </a>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300"><?= htmlspecialchars($item['category']) ?></td>
+                            <td class="px-6 py-4">
+                                <span class="px-2 py-1 rounded-full text-xs font-medium <?= statusBadgeClass($item['status']) ?>">
+                                    <?= ucfirst(htmlspecialchars($item['status'])) ?>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300"><?= htmlspecialchars($item['location']) ?></td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300"><?= htmlspecialchars($item['date_reported']) ?></td>
+                            <td class="px-6 py-4">
+                                <div class="flex gap-2">
+                                    <a href="<?= BASE_URL ?>pages/my_items.php?edit=<?= (int)$item['item_id'] ?>"
+                                       class="px-3 py-1.5 text-xs font-medium rounded-lg border border-yellow-400 text-yellow-700 dark:text-yellow-300 dark:border-yellow-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 transition">
+                                        Edit
+                                    </a>
+                                    <form action="<?= BASE_URL ?>actions/delete_item.php" method="POST"
+                                          onsubmit="return confirm('Delete this item?');">
+                                        <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+                                        <input type="hidden" name="item_id"    value="<?= (int)$item['item_id'] ?>">
+                                        <button type="submit"
+                                                class="px-3 py-1.5 text-xs font-medium rounded-lg border border-red-400 text-red-600 dark:text-red-400 dark:border-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 transition">
+                                            Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     <?php endif; ?>
 
-</div>
+</main>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

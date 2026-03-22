@@ -14,8 +14,6 @@ $dateTo   = trim($_GET['date_to']   ?? '');
 $sortCol = trim($_GET['sort_col'] ?? 'created_at');
 $sortDir = trim($_GET['sort_dir'] ?? 'desc');
 
-// Whitelist sort column — NEVER interpolate raw user input into ORDER BY
-// Only these exact strings are allowed. Anything else falls back to created_at.
 $allowedSortCols = [
     'item_name'     => 'i.item_name',
     'category'      => 'i.category',
@@ -26,13 +24,11 @@ $allowedSortCols = [
     'created_at'    => 'i.created_at',
 ];
 
-// Whitelist sort direction — only asc or desc, nothing else
 $allowedSortDirs = ['asc', 'desc'];
 
 if (!array_key_exists($sortCol, $allowedSortCols)) $sortCol = 'created_at';
 if (!in_array($sortDir, $allowedSortDirs))         $sortDir = 'desc';
 
-// Resolve to the actual SQL column expression (e.g. 'i.item_name')
 $orderByCol = $allowedSortCols[$sortCol];
 
 // --- WHITELIST FILTER VALIDATION ---
@@ -75,12 +71,8 @@ $perPage = 10;
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $offset  = ($page - 1) * $perPage;
 
-// Flag: did the user actually submit the form?
-// array_key_exists on 'keyword' is enough — it's always present when form is submitted
 $searchSubmitted = array_key_exists('keyword', $_GET);
 
-// Count total matching results — needed to calculate total pages
-// Same WHERE clause, same params — just COUNT instead of SELECT
 $totalCount = 0;
 $totalPages = 1;
 
@@ -94,16 +86,12 @@ if ($searchSubmitted) {
     $countStmt->execute($params);
     $totalCount = (int)$countStmt->fetchColumn();
     $totalPages = max(1, (int)ceil($totalCount / $perPage));
-
-    // Clamp current page to valid range in case URL is manually edited
     $page = min($page, $totalPages);
 }
 
-// --- FETCH PAGINATED RESULTS ---
 $results = [];
 
 if ($searchSubmitted) {
-    // ORDER BY uses whitelisted $orderByCol and $sortDir — never raw user input
     $sql = "
         SELECT i.item_id, i.item_name, i.category, i.status,
                i.location, i.date_reported, u.full_name AS reporter_name
@@ -116,12 +104,10 @@ if ($searchSubmitted) {
 
     $stmt = $db->prepare($sql);
 
-    // Bind the filter params first (they are strings — PDO default type is fine)
     foreach ($params as $i => $val) {
         $stmt->bindValue($i + 1, $val);
     }
 
-    // Bind LIMIT and OFFSET as integers — must be explicit or MySQL may reject them
     $stmt->bindValue(count($params) + 1, $perPage, PDO::PARAM_INT);
     $stmt->bindValue(count($params) + 2, $offset,  PDO::PARAM_INT);
 
@@ -129,10 +115,6 @@ if ($searchSubmitted) {
     $results = $stmt->fetchAll();
 }
 
-// --- BUILD FILTER QUERY STRING FOR PAGINATION LINKS ---
-// Pagination links must carry all current filters AND sort state in the URL.
-// Otherwise clicking "Next" would lose the user's search and sort preference.
-// keyword must always be present so $searchSubmitted stays true on page 2+.
 $filterParams = [
     'keyword'   => $keyword,
     'category'  => $category,
@@ -142,14 +124,8 @@ $filterParams = [
     'sort_col'  => $sortCol,
     'sort_dir'  => $sortDir,
 ];
-// http_build_query turns the array into keyword=wallet&category=Electronics&sort_col=... etc.
 $filterQuery = http_build_query($filterParams);
 
-// --- SORT LINK HELPER ---
-// For each column header, build the URL that clicking it should go to.
-// If the user clicks the column that is already active, flip the direction.
-// If they click a different column, default to ascending.
-// $filterParams already contains the current filters — we just override sort keys.
 function sortLink(string $col, string $currentCol, string $currentDir, array $filterParams): string {
     $newDir = ($col === $currentCol && $currentDir === 'asc') ? 'desc' : 'asc';
     $filterParams['sort_col'] = $col;
@@ -157,8 +133,6 @@ function sortLink(string $col, string $currentCol, string $currentDir, array $fi
     return '?' . http_build_query($filterParams);
 }
 
-// Arrow indicator shown next to the active sort column header
-// Up arrow = ascending, down arrow = descending
 function sortArrow(string $col, string $currentCol, string $currentDir): string {
     if ($col !== $currentCol) return '';
     return $currentDir === 'asc' ? ' ↑' : ' ↓';
@@ -168,176 +142,230 @@ require_once __DIR__ . '/../includes/header.php';
 require_once __DIR__ . '/../includes/navbar.php';
 ?>
 
-<div class="container">
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
 
-    <h2>Search Items</h2>
-    <p>Filter by keyword, category, status, or date range.</p>
+    <div class="mb-6">
+        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white">Search Items</h1>
+        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Filter by keyword, category, status, or date range.</p>
+    </div>
 
     <!-- SEARCH FORM -->
-    <form method="get" action="<?= BASE_URL ?>pages/search.php" class="search-form">
+    <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 shadow-sm mb-6">
+        <form method="get" action="<?= BASE_URL ?>pages/search.php">
 
-        <div class="form-row">
-            <div class="form-group">
-                <label for="keyword">Keyword</label>
-                <input
-                    type="text"
-                    id="keyword"
-                    name="keyword"
-                    value="<?= htmlspecialchars($keyword) ?>"
-                    placeholder="e.g. wallet, phone, keys"
-                >
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+
+                <div>
+                    <label for="keyword" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Keyword</label>
+                    <input type="text" id="keyword" name="keyword"
+                           value="<?= htmlspecialchars($keyword) ?>"
+                           placeholder="e.g. wallet, phone, keys"
+                           class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                </div>
+
+                <div>
+                    <label for="category" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Category</label>
+                    <select id="category" name="category"
+                            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                        <option value="">— All Categories —</option>
+                        <?php foreach (['Electronics','Clothing','Documents','Accessories','Other'] as $cat): ?>
+                            <option value="<?= $cat ?>" <?= $category === $cat ? 'selected' : '' ?>><?= $cat ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+
+                <div>
+                    <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</label>
+                    <select id="status" name="status"
+                            class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                        <option value="">— All Statuses —</option>
+                        <option value="lost"    <?= $status === 'lost'    ? 'selected' : '' ?>>Lost</option>
+                        <option value="found"   <?= $status === 'found'   ? 'selected' : '' ?>>Found</option>
+                        <option value="claimed" <?= $status === 'claimed' ? 'selected' : '' ?>>Claimed</option>
+                        <option value="expired" <?= $status === 'expired' ? 'selected' : '' ?>>Expired</option>
+                    </select>
+                </div>
+
             </div>
 
-            <div class="form-group">
-                <label for="category">Category</label>
-                <select id="category" name="category">
-                    <option value="">— All Categories —</option>
-                    <?php
-                    $cats = ['Electronics', 'Clothing', 'Documents', 'Accessories', 'Other'];
-                    foreach ($cats as $cat):
-                    ?>
-                        <option value="<?= $cat ?>" <?= $category === $cat ? 'selected' : '' ?>>
-                            <?= $cat ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-            <div class="form-group">
-                <label for="status">Status</label>
-                <select id="status" name="status">
-                    <option value="">— All Statuses —</option>
-                    <option value="lost"    <?= $status === 'lost'    ? 'selected' : '' ?>>Lost</option>
-                    <option value="found"   <?= $status === 'found'   ? 'selected' : '' ?>>Found</option>
-                    <option value="claimed" <?= $status === 'claimed' ? 'selected' : '' ?>>Claimed</option>
-                    <option value="expired" <?= $status === 'expired' ? 'selected' : '' ?>>Expired</option>
-                </select>
-            </div>
-        </div>
+                <div>
+                    <label for="date_from" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Date From</label>
+                    <input type="date" id="date_from" name="date_from"
+                           value="<?= htmlspecialchars($dateFrom) ?>"
+                           class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                </div>
 
-        <div class="form-row">
-            <div class="form-group">
-                <label for="date_from">Date From</label>
-                <input
-                    type="date"
-                    id="date_from"
-                    name="date_from"
-                    value="<?= htmlspecialchars($dateFrom) ?>"
-                >
-            </div>
+                <div>
+                    <label for="date_to" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Date To</label>
+                    <input type="date" id="date_to" name="date_to"
+                           value="<?= htmlspecialchars($dateTo) ?>"
+                           class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                </div>
 
-            <div class="form-group">
-                <label for="date_to">Date To</label>
-                <input
-                    type="date"
-                    id="date_to"
-                    name="date_to"
-                    value="<?= htmlspecialchars($dateTo) ?>"
-                >
-            </div>
+                <div class="flex items-end gap-3">
+                    <button type="submit"
+                            class="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                        Search
+                    </button>
+                    <a href="<?= BASE_URL ?>pages/search.php"
+                       class="flex-1 py-2.5 px-4 text-center border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium rounded-lg transition">
+                        Clear
+                    </a>
+                </div>
 
-            <div class="form-group form-group-submit">
-                <label>&nbsp;</label>
-                <button type="submit">Search</button>
-                <a href="<?= BASE_URL ?>pages/search.php" class="btn-reset">Clear</a>
             </div>
-        </div>
-
-    </form>
+        </form>
+    </div>
 
     <!-- RESULTS -->
     <?php if (!$searchSubmitted): ?>
-
-        <p>Enter your search criteria above and click Search.</p>
+        <div class="text-center py-16 text-sm text-gray-500 dark:text-gray-400">
+            Enter your search criteria above and click Search.
+        </div>
 
     <?php elseif (empty($results)): ?>
-
-        <p>No items found matching your criteria. Try broader filters.</p>
+        <div class="text-center py-16 text-sm text-gray-500 dark:text-gray-400">
+            No items found matching your criteria. Try broader filters.
+        </div>
 
     <?php else: ?>
 
-        <p>
-            Found <strong><?= $totalCount ?></strong> item(s).
-            <?php if ($totalPages > 1): ?>
-                Showing page <?= $page ?> of <?= $totalPages ?>.
-            <?php endif; ?>
-        </p>
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
 
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th>
-                        <a href="<?= sortLink('item_name', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
-                            Item Name<?= sortArrow('item_name', $sortCol, $sortDir) ?>
-                        </a>
-                    </th>
-                    <th>
-                        <a href="<?= sortLink('category', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
-                            Category<?= sortArrow('category', $sortCol, $sortDir) ?>
-                        </a>
-                    </th>
-                    <th>
-                        <a href="<?= sortLink('status', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
-                            Status<?= sortArrow('status', $sortCol, $sortDir) ?>
-                        </a>
-                    </th>
-                    <th>
-                        <a href="<?= sortLink('location', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
-                            Location<?= sortArrow('location', $sortCol, $sortDir) ?>
-                        </a>
-                    </th>
-                    <th>
-                        <a href="<?= sortLink('reporter_name', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
-                            Reported By<?= sortArrow('reporter_name', $sortCol, $sortDir) ?>
-                        </a>
-                    </th>
-                    <th>
-                        <a href="<?= sortLink('date_reported', $sortCol, $sortDir, $filterParams) ?>" class="sort-link">
-                            Date<?= sortArrow('date_reported', $sortCol, $sortDir) ?>
-                        </a>
-                    </th>
-                    <th>Action</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($results as $item): ?>
-                <tr>
-                    <td><?= htmlspecialchars($item['item_name']) ?></td>
-                    <td><?= htmlspecialchars($item['category']) ?></td>
-                    <td><?= htmlspecialchars($item['status']) ?></td>
-                    <td><?= htmlspecialchars($item['location']) ?></td>
-                    <td><?= htmlspecialchars($item['reporter_name']) ?></td>
-                    <td><?= htmlspecialchars($item['date_reported']) ?></td>
-                    <td><a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= $item['item_id'] ?>">View</a></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-
-        <!-- PAGINATION CONTROLS -->
-        <?php if ($totalPages > 1): ?>
-            <div class="pagination">
-
-                <?php if ($page > 1): ?>
-                    <!-- Previous link carries all current filters + sort state + page-1 -->
-                    <a href="?<?= $filterQuery ?>&page=<?= $page - 1 ?>" class="page-btn">← Previous</a>
-                <?php else: ?>
-                    <span class="page-btn page-btn-disabled">← Previous</span>
-                <?php endif; ?>
-
-                <span class="page-info">Page <?= $page ?> of <?= $totalPages ?></span>
-
-                <?php if ($page < $totalPages): ?>
-                    <a href="?<?= $filterQuery ?>&page=<?= $page + 1 ?>" class="page-btn">Next →</a>
-                <?php else: ?>
-                    <span class="page-btn page-btn-disabled">Next →</span>
-                <?php endif; ?>
-
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                    Found <span class="font-semibold text-gray-900 dark:text-white"><?= $totalCount ?></span> item(s)
+                    <?php if ($totalPages > 1): ?>
+                        — page <span class="font-semibold"><?= $page ?></span> of <span class="font-semibold"><?= $totalPages ?></span>
+                    <?php endif; ?>
+                </p>
             </div>
-        <?php endif; ?>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-gray-50 dark:bg-gray-700 text-xs uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        <tr>
+                            <th class="px-6 py-3">
+                                <a href="<?= sortLink('item_name', $sortCol, $sortDir, $filterParams) ?>"
+                                   class="hover:text-gray-700 dark:hover:text-gray-200 transition">
+                                    Item Name<?= sortArrow('item_name', $sortCol, $sortDir) ?>
+                                </a>
+                            </th>
+                            <th class="px-6 py-3">
+                                <a href="<?= sortLink('category', $sortCol, $sortDir, $filterParams) ?>"
+                                   class="hover:text-gray-700 dark:hover:text-gray-200 transition">
+                                    Category<?= sortArrow('category', $sortCol, $sortDir) ?>
+                                </a>
+                            </th>
+                            <th class="px-6 py-3">
+                                <a href="<?= sortLink('status', $sortCol, $sortDir, $filterParams) ?>"
+                                   class="hover:text-gray-700 dark:hover:text-gray-200 transition">
+                                    Status<?= sortArrow('status', $sortCol, $sortDir) ?>
+                                </a>
+                            </th>
+                            <th class="px-6 py-3">
+                                <a href="<?= sortLink('location', $sortCol, $sortDir, $filterParams) ?>"
+                                   class="hover:text-gray-700 dark:hover:text-gray-200 transition">
+                                    Location<?= sortArrow('location', $sortCol, $sortDir) ?>
+                                </a>
+                            </th>
+                            <th class="px-6 py-3">
+                                <a href="<?= sortLink('reporter_name', $sortCol, $sortDir, $filterParams) ?>"
+                                   class="hover:text-gray-700 dark:hover:text-gray-200 transition">
+                                    Reported By<?= sortArrow('reporter_name', $sortCol, $sortDir) ?>
+                                </a>
+                            </th>
+                            <th class="px-6 py-3">
+                                <a href="<?= sortLink('date_reported', $sortCol, $sortDir, $filterParams) ?>"
+                                   class="hover:text-gray-700 dark:hover:text-gray-200 transition">
+                                    Date<?= sortArrow('date_reported', $sortCol, $sortDir) ?>
+                                </a>
+                            </th>
+                            <th class="px-6 py-3">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                        <?php foreach ($results as $item): ?>
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                            <td class="px-6 py-4 font-medium text-gray-900 dark:text-white">
+                                <?= htmlspecialchars($item['item_name']) ?>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                <?= htmlspecialchars($item['category']) ?>
+                            </td>
+                            <td class="px-6 py-4">
+                                <?php
+                                $status = $item['status'];
+                                $badgeClass = match($status) {
+                                    'lost'    => 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+                                    'found'   => 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+                                    'claimed' => 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+                                    'expired' => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+                                    default   => 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+                                };
+                                ?>
+                                <span class="px-2 py-1 rounded-full text-xs font-medium <?= $badgeClass ?>">
+                                    <?= ucfirst($status) ?>
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                <?= htmlspecialchars($item['location']) ?>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                <?= htmlspecialchars($item['reporter_name']) ?>
+                            </td>
+                            <td class="px-6 py-4 text-gray-600 dark:text-gray-300">
+                                <?= htmlspecialchars($item['date_reported']) ?>
+                            </td>
+                            <td class="px-6 py-4">
+                                <a href="<?= BASE_URL ?>pages/item_detail.php?id=<?= $item['item_id'] ?>"
+                                   class="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                                    View
+                                </a>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- PAGINATION -->
+            <?php if ($totalPages > 1): ?>
+                <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between text-sm">
+
+                    <?php if ($page > 1): ?>
+                        <a href="?<?= $filterQuery ?>&page=<?= $page - 1 ?>"
+                           class="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                            ← Previous
+                        </a>
+                    <?php else: ?>
+                        <span class="px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed">
+                            ← Previous
+                        </span>
+                    <?php endif; ?>
+
+                    <span class="text-gray-500 dark:text-gray-400">Page <?= $page ?> of <?= $totalPages ?></span>
+
+                    <?php if ($page < $totalPages): ?>
+                        <a href="?<?= $filterQuery ?>&page=<?= $page + 1 ?>"
+                           class="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+                            Next →
+                        </a>
+                    <?php else: ?>
+                        <span class="px-4 py-2 rounded-lg border border-gray-100 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed">
+                            Next →
+                        </span>
+                    <?php endif; ?>
+
+                </div>
+            <?php endif; ?>
+
+        </div>
 
     <?php endif; ?>
 
-</div>
+</main>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>

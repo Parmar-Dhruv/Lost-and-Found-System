@@ -5,54 +5,43 @@ $db = getDB();
 
 // --- STATS QUERIES ---
 
-// Total items (not deleted)
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE is_deleted = 0");
 $stmt->execute();
 $totalItems = $stmt->fetchColumn();
 
-// Lost items
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'lost' AND is_deleted = 0");
 $stmt->execute();
 $totalLost = $stmt->fetchColumn();
 
-// Found items
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'found' AND is_deleted = 0");
 $stmt->execute();
 $totalFound = $stmt->fetchColumn();
 
-// Claimed items
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'claimed' AND is_deleted = 0");
 $stmt->execute();
 $totalClaimed = $stmt->fetchColumn();
 
-// Expired items
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE status = 'expired' AND is_deleted = 0");
 $stmt->execute();
 $totalExpired = $stmt->fetchColumn();
 
-// Soft-deleted items (items hidden from public but recoverable)
 $stmt = $db->prepare("SELECT COUNT(*) FROM items WHERE is_deleted = 1");
 $stmt->execute();
 $totalDeleted = $stmt->fetchColumn();
 
-// Pending claims — claims waiting for admin decision
 $stmt = $db->prepare("SELECT COUNT(*) FROM claims WHERE status = 'pending'");
 $stmt->execute();
 $totalPendingClaims = $stmt->fetchColumn();
 
-// Total registered users (excluding admin accounts)
 $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE role = 'user'");
 $stmt->execute();
 $totalUsers = $stmt->fetchColumn();
 
-// Total approved claims
 $stmt = $db->prepare("SELECT COUNT(*) FROM claims WHERE status = 'approved'");
 $stmt->execute();
 $totalApprovedClaims = $stmt->fetchColumn();
 
 // --- RECENT ACTIVITY LOG ---
-// Last 10 actions taken by any user in the system
-// LEFT JOIN because user_id in activity_log can be NULL if user was deleted
 $stmt = $db->prepare("
     SELECT al.action, al.entity, al.entity_id, al.created_at,
            u.full_name AS actor_name
@@ -65,102 +54,214 @@ $stmt->execute();
 $recentLogs = $stmt->fetchAll();
 
 require_once __DIR__ . '/../includes/header.php';
-require_once __DIR__ . '/../includes/navbar.php';
+require_once __DIR__ . '/sidebar.php';
 ?>
 
-<div class="container">
+    <!-- TOP BAR -->
+    <header class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-8 py-4 flex items-center justify-between flex-shrink-0">
+        <div>
+            <h1 class="text-xl font-semibold text-gray-900 dark:text-white">Dashboard</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Full system overview</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="text-sm text-gray-500 dark:text-gray-400">Logged in as</span>
+            <span class="text-sm font-medium text-gray-900 dark:text-white">
+                <?= htmlspecialchars($_SESSION['full_name']) ?>
+            </span>
+            <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
+                <?= strtoupper(substr($_SESSION['full_name'], 0, 1)) ?>
+            </div>
+        </div>
+    </header>
 
-    <h2>Admin Dashboard</h2>
-    <p>Full system overview. Only visible to administrators.</p>
+    <!-- MAIN CONTENT -->
+    <main class="flex-1 px-8 py-8 space-y-8">
 
-    <!-- STATS GRID — 9 cards total -->
-    <div class="stats-grid">
+        <!-- STATS GRID -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 
-        <div class="stat-card stat-total">
-            <div class="stat-number"><?= $totalItems ?></div>
-            <div class="stat-label">Total Items</div>
+            <!-- Total Items -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalItems ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Total Items</div>
+                </div>
+            </div>
+
+            <!-- Lost -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-red-50 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalLost ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Lost Items</div>
+                </div>
+            </div>
+
+            <!-- Found -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalFound ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Found Items</div>
+                </div>
+            </div>
+
+            <!-- Claimed -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalClaimed ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Claimed Items</div>
+                </div>
+            </div>
+
+            <!-- Expired -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalExpired ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Expired Items</div>
+                </div>
+            </div>
+
+            <!-- Soft Deleted -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-orange-50 dark:bg-orange-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-orange-500 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalDeleted ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Soft Deleted</div>
+                </div>
+            </div>
+
+            <!-- Registered Users -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-purple-50 dark:bg-purple-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-purple-600 dark:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalUsers ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Registered Users</div>
+                </div>
+            </div>
+
+            <!-- Pending Claims -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalPendingClaims ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Pending Claims</div>
+                </div>
+            </div>
+
+            <!-- Approved Claims -->
+            <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm p-5 flex items-center gap-4">
+                <div class="w-12 h-12 bg-teal-50 dark:bg-teal-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg class="w-6 h-6 text-teal-600 dark:text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-2xl font-bold text-gray-900 dark:text-white"><?= $totalApprovedClaims ?></div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">Approved Claims</div>
+                </div>
+            </div>
+
         </div>
 
-        <div class="stat-card stat-lost">
-            <div class="stat-number"><?= $totalLost ?></div>
-            <div class="stat-label">Lost</div>
+        <!-- RECENT ACTIVITY LOG -->
+        <div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-sm">
+
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h2 class="text-base font-semibold text-gray-900 dark:text-white">Recent Activity</h2>
+                <a href="<?= BASE_URL ?>admin/logs.php"
+                   class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                    View all logs →
+                </a>
+            </div>
+
+            <?php if (empty($recentLogs)): ?>
+                <div class="px-6 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                    No activity recorded yet.
+                </div>
+            <?php else: ?>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b border-gray-200 dark:border-gray-700">
+                                <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Who</th>
+                                <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Action</th>
+                                <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Entity</th>
+                                <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">ID</th>
+                                <th class="text-left px-6 py-3 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">When</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
+                            <?php foreach ($recentLogs as $log): ?>
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
+                                <td class="px-6 py-3 text-gray-900 dark:text-white font-medium">
+                                    <?php if ($log['actor_name']): ?>
+                                        <?= htmlspecialchars($log['actor_name']) ?>
+                                    <?php else: ?>
+                                        <span class="italic text-gray-400 dark:text-gray-500">Deleted User</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="px-6 py-3">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                                        <?= htmlspecialchars($log['action']) ?>
+                                    </span>
+                                </td>
+                                <td class="px-6 py-3 text-gray-600 dark:text-gray-400">
+                                    <?= $log['entity'] ? htmlspecialchars($log['entity']) : '—' ?>
+                                </td>
+                                <td class="px-6 py-3 text-gray-600 dark:text-gray-400">
+                                    <?= $log['entity_id'] ?? '—' ?>
+                                </td>
+                                <td class="px-6 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                                    <?= htmlspecialchars($log['created_at']) ?>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+            <?php endif; ?>
+
         </div>
 
-        <div class="stat-card stat-found">
-            <div class="stat-number"><?= $totalFound ?></div>
-            <div class="stat-label">Found</div>
-        </div>
+    </main>
 
-        <div class="stat-card stat-claimed">
-            <div class="stat-number"><?= $totalClaimed ?></div>
-            <div class="stat-label">Claimed</div>
-        </div>
+</div><!-- /content-wrapper: opened in sidebar.php -->
+</div><!-- /x-data wrapper: opened in sidebar.php -->
 
-        <div class="stat-card stat-expired">
-            <div class="stat-number"><?= $totalExpired ?></div>
-            <div class="stat-label">Expired</div>
-        </div>
-
-        <div class="stat-card stat-deleted">
-            <div class="stat-number"><?= $totalDeleted ?></div>
-            <div class="stat-label">Soft Deleted</div>
-        </div>
-
-        <div class="stat-card stat-users">
-            <div class="stat-number"><?= $totalUsers ?></div>
-            <div class="stat-label">Registered Users</div>
-        </div>
-
-        <div class="stat-card stat-pending">
-            <div class="stat-number"><?= $totalPendingClaims ?></div>
-            <div class="stat-label">Pending Claims</div>
-        </div>
-
-        <div class="stat-card stat-approved">
-            <div class="stat-number"><?= $totalApprovedClaims ?></div>
-            <div class="stat-label">Approved Claims</div>
-        </div>
-
-    </div>
-
-    <!-- QUICK LINKS -->
-    <div class="admin-quick-links">
-        <a href="<?= BASE_URL ?>admin/items.php">Manage Items</a>
-        <a href="<?= BASE_URL ?>admin/users.php">Manage Users</a>
-        <a href="<?= BASE_URL ?>admin/claims.php">Manage Claims</a>
-        <a href="<?= BASE_URL ?>admin/logs.php">View Logs</a>
-    </div>
-
-    <!-- RECENT ACTIVITY LOG -->
-    <h3>Recent Activity (Last 10 Actions)</h3>
-
-    <?php if (empty($recentLogs)): ?>
-        <p>No activity recorded yet.</p>
-    <?php else: ?>
-        <table class="items-table">
-            <thead>
-                <tr>
-                    <th>Who</th>
-                    <th>Action</th>
-                    <th>Entity</th>
-                    <th>Entity ID</th>
-                    <th>When</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($recentLogs as $log): ?>
-                <tr>
-                    <td><?= $log['actor_name'] ? htmlspecialchars($log['actor_name']) : '<em>Deleted User</em>' ?></td>
-                    <td><?= htmlspecialchars($log['action']) ?></td>
-                    <td><?= $log['entity'] ? htmlspecialchars($log['entity']) : '—' ?></td>
-                    <td><?= $log['entity_id'] ?? '—' ?></td>
-                    <td><?= htmlspecialchars($log['created_at']) ?></td>
-                </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php endif; ?>
-
-</div>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+<?php require_once __DIR__ . '/footer.php'; ?>

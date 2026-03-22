@@ -31,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // EC-15: Use password_verify() — never compare plain text
                 if (!$user || !password_verify($password, $user['password'])) {
-                    // Deliberately vague — don't tell attacker which field is wrong
                     $error = 'Invalid email or password.';
                 } else {
                     // Regenerate session ID on login — prevents session fixation
@@ -49,7 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ");
                     $stmt->execute([$user['user_id'], $user['user_id']]);
 
-                    // Redirect admin to admin panel, users to homepage
                     if ($user['role'] === 'admin') {
                         header('Location: /lost-and-found/admin/index.php');
                     } else {
@@ -69,38 +67,61 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
-
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';
 ?>
 
-<div class="container">
-    <div class="form-wrapper">
-        <h2>Log In</h2>
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+    <div class="min-h-[70vh] flex items-center justify-center">
+        <div class="w-full max-w-md bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-8 shadow-sm">
 
-        <?php if ($error): ?>
-            <div class="alert alert-error"><?= htmlspecialchars($error) ?></div>
-        <?php endif; ?>
+            <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">Log In</h1>
+            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">Welcome back. Enter your credentials to continue.</p>
 
-        <form method="POST" action="">
-            <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
+            <?php if ($error): ?>
+                <div class="mb-5 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-sm text-red-700 dark:text-red-300">
+                    <?= htmlspecialchars($error) ?>
+                </div>
+            <?php endif; ?>
 
-            <div class="form-group">
-                <label for="email">Email Address</label>
-                <input type="email" id="email" name="email"
-                       value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-                       required>
-            </div>
+            <form method="POST" action="">
+                <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
 
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
+                <div class="mb-5">
+                    <label for="email" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        Email Address
+                    </label>
+                    <input type="email" id="email" name="email"
+                           value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+                           required
+                           class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                </div>
 
-            <button type="submit" class="btn btn-primary">Log In</button>
-            <p class="form-footer">Don't have an account? <a href="<?= BASE_URL ?>auth/register.php">Register here</a></p>
-        </form>
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                        Password
+                    </label>
+                    <input type="password" id="password" name="password"
+                           required
+                           class="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                </div>
+
+                <button type="submit"
+                        class="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                    Log In
+                </button>
+
+                <p class="mt-5 text-center text-sm text-gray-500 dark:text-gray-400">
+                    Don't have an account?
+                    <a href="<?= BASE_URL ?>auth/register.php"
+                       class="text-blue-600 dark:text-blue-400 hover:underline font-medium">
+                        Register here
+                    </a>
+                </p>
+            </form>
+
+        </div>
     </div>
-</div>
+</main>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>
