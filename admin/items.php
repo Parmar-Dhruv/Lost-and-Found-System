@@ -18,22 +18,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($item_id <= 0) {
         $message = 'Invalid item ID.';
     } elseif ($action === 'delete') {
-        // Soft delete — set is_deleted = 1, never actually delete the row
         $stmt = $db->prepare("UPDATE items SET is_deleted = 1 WHERE item_id = ?");
         $stmt->execute([$item_id]);
 
-        // Log the action
         $logStmt = $db->prepare("INSERT INTO activity_log (user_id, action, entity, entity_id) VALUES (?, 'delete_item', 'item', ?)");
         $logStmt->execute([$_SESSION['user_id'], $item_id]);
 
         $message = 'Item deleted (soft delete). It can be restored.';
 
     } elseif ($action === 'restore') {
-        // Restore — set is_deleted = 0
         $stmt = $db->prepare("UPDATE items SET is_deleted = 0 WHERE item_id = ?");
         $stmt->execute([$item_id]);
 
-        // Log the action
         $logStmt = $db->prepare("INSERT INTO activity_log (user_id, action, entity, entity_id) VALUES (?, 'restore_item', 'item', ?)");
         $logStmt->execute([$_SESSION['user_id'], $item_id]);
 
@@ -58,7 +54,6 @@ $stmt = $db->query("
 $items = $stmt->fetchAll();
 
 // --- Duplicate Detection (EC-04) ---
-// Flag items where another item has the same name + location reported within 2 days
 $duplicateIds = [];
 $dupStmt = $db->query("
     SELECT i1.item_id
@@ -107,6 +102,13 @@ foreach ($dupStmt->fetchAll() as $row) {
         </div>
     <?php endif; ?>
 
+    <!-- Export button -->
+    <p>
+        <a href="<?= BASE_URL ?>actions/export_items_pdf.php" class="btn btn-secondary">
+            ⬇ Export All Items to PDF
+        </a>
+    </p>
+
     <?php if (empty($items)): ?>
         <p>No items in the system yet.</p>
     <?php else: ?>
@@ -137,7 +139,6 @@ foreach ($dupStmt->fetchAll() as $row) {
                     <td><?= $item['is_deleted'] ? 'Yes' : 'No' ?></td>
                     <td>
                         <?php if ($item['is_deleted'] == 0): ?>
-                            <!-- Delete button -->
                             <form method="POST" action="" onsubmit="return confirm('Soft-delete this item?');">
                                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                 <input type="hidden" name="action" value="delete">
@@ -145,7 +146,6 @@ foreach ($dupStmt->fetchAll() as $row) {
                                 <button type="submit">Delete</button>
                             </form>
                         <?php else: ?>
-                            <!-- Restore button -->
                             <form method="POST" action="">
                                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                                 <input type="hidden" name="action" value="restore">

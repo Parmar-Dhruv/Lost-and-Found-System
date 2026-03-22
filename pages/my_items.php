@@ -48,7 +48,6 @@ if ($edit_id > 0) {
     $stmt->execute([$edit_id, $user_id]);
     $edit_item = $stmt->fetch();
 
-    // EC-01: If item doesn't exist OR doesn't belong to this user — reject
     if (!$edit_item) {
         header('Location: ' . BASE_URL . 'pages/my_items.php?error=not_owner');
         exit;
@@ -68,7 +67,6 @@ $items = $stmt->fetchAll();
 include __DIR__ . '/../includes/header.php';
 include __DIR__ . '/../includes/navbar.php';
 
-// Status badge colour helper
 function statusBadge(string $status): string {
     return match($status) {
         'lost'    => 'badge-danger',
@@ -93,12 +91,11 @@ function statusBadge(string $status): string {
         <div class="alert alert-danger"><?= $errorMessages[$error] ?></div>
     <?php endif; ?>
 
-    <!-- ── EDIT FORM (only shown when ?edit=ID is in URL) ────────────────── -->
+    <!-- ── EDIT FORM ─────────────────────────────────────────────────────── -->
     <?php if ($edit_item): ?>
         <div class="edit-form-section" style="margin-bottom:40px; padding:20px; border:1px solid #ccc; border-radius:6px;">
             <h3>Edit Item: <?= htmlspecialchars($edit_item['item_name']) ?></h3>
 
-            <!-- enctype required — user may replace the image -->
             <form action="<?= BASE_URL ?>actions/update_item.php" method="POST" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="<?= $_SESSION['csrf_token'] ?>">
                 <input type="hidden" name="item_id"    value="<?= $edit_item['item_id'] ?>">
@@ -166,7 +163,6 @@ function statusBadge(string $status): string {
                     <small class="form-text text-muted">Cannot be a future date.</small>
                 </div>
 
-                <!-- Current image display + option to remove or replace -->
                 <div class="form-group">
                     <label>Current Image</label>
                     <?php if (!empty($edit_item['image'])): ?>
@@ -203,6 +199,14 @@ function statusBadge(string $status): string {
             <a href="<?= BASE_URL ?>pages/report.php">Report one now</a>.
         </div>
     <?php else: ?>
+
+        <!-- Export button -->
+        <p>
+            <a href="<?= BASE_URL ?>actions/export_my_items_pdf.php" class="btn btn-secondary">
+                ⬇ Export My Items to PDF
+            </a>
+        </p>
+
         <table class="table table-bordered table-striped">
             <thead>
                 <tr>
